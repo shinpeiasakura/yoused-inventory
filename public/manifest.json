@@ -1,0 +1,10 @@
+{
+  "name": "YOUSED Inventory",
+  "short_name": "YOUSED",
+  "description": "yoused在庫管理アプリ",
+  "display": "standalone",
+  "background_color": "#F7F5F1",
+  "theme_color": "#1A1A1A",
+  "start_url": "/",
+  "icons": []
+}
