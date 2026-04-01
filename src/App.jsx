@@ -12,7 +12,9 @@ import {
   syncColor,
   syncCash,
   syncEquipmentItem, deleteEquipmentFromDb,
+  parseProductRow,
 } from './lib/db'
+import { subscribeToRealtime } from './lib/realtime'
 
 function genId() { return crypto.randomUUID() }
 
@@ -55,6 +57,98 @@ export default function App() {
     const flush = () => saveCache(dataRef.current)
     window.addEventListener('beforeunload', flush)
     return () => window.removeEventListener('beforeunload', flush)
+  }, [])
+
+  // ── Realtime 購読（他端末の変更をリアルタイムで反映）────────────────────────
+  useEffect(() => {
+    return subscribeToRealtime((table, { eventType, new: newRow, old: oldRow }) => {
+      setData(prev => {
+
+        // ── products ──────────────────────────────────────────────────────────
+        if (table === 'products') {
+          const incoming = parseProductRow(newRow ?? {})
+
+          if (eventType === 'INSERT') {
+            const exists = prev.products.find(p => p.id === incoming.id)
+            if (exists) {
+              // 自分自身の変更が返ってきた → photo(base64)を保持しつつ reconcile
+              return {
+                ...prev,
+                products: prev.products.map(p =>
+                  p.id === incoming.id ? { ...incoming, photo: p.photo } : p
+                ),
+              }
+            }
+            return { ...prev, products: [...prev.products, incoming] }
+          }
+
+          if (eventType === 'UPDATE') {
+            return {
+              ...prev,
+              products: prev.products.map(p =>
+                p.id === incoming.id
+                  ? { ...incoming, photo: p.photo }  // アップロード中の base64 を保持
+                  : p
+              ),
+            }
+          }
+
+          if (eventType === 'DELETE') {
+            return {
+              ...prev,
+              products: prev.products.filter(p => p.id !== (oldRow?.id ?? '')),
+            }
+          }
+        }
+
+        // ── colors ────────────────────────────────────────────────────────────
+        if (table === 'colors') {
+          if (eventType === 'INSERT') {
+            if (prev.colors.find(c => c.id === newRow.id)) return prev
+            return { ...prev, colors: [...prev.colors, newRow] }
+          }
+          if (eventType === 'UPDATE') {
+            return { ...prev, colors: prev.colors.map(c => c.id === newRow.id ? newRow : c) }
+          }
+          if (eventType === 'DELETE') {
+            return { ...prev, colors: prev.colors.filter(c => c.id !== oldRow?.id) }
+          }
+        }
+
+        // ── cash_data ─────────────────────────────────────────────────────────
+        if (table === 'cash_data' && eventType !== 'DELETE') {
+          return {
+            ...prev,
+            cash: {
+              registerAmount: newRow.register_amount ?? 0,
+              history:        newRow.history         ?? [],
+            },
+          }
+        }
+
+        // ── equipment ─────────────────────────────────────────────────────────
+        if (table === 'equipment') {
+          if (eventType === 'INSERT') {
+            if (prev.equipment.find(e => e.id === newRow.id)) return prev
+            return { ...prev, equipment: [...prev.equipment, newRow] }
+          }
+          if (eventType === 'UPDATE') {
+            return {
+              ...prev,
+              equipment: prev.equipment.map(e => e.id === newRow.id ? newRow : e),
+            }
+          }
+          if (eventType === 'DELETE') {
+            return {
+              ...prev,
+              equipment: prev.equipment.filter(e => e.id !== oldRow?.id),
+            }
+          }
+        }
+
+        return prev
+      })
+    })
   }, [])
 
   // 起動時に Supabase からロード

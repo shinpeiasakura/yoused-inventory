@@ -142,7 +142,7 @@ export async function loadFromSupabase() {
   if (equipmentRes.error) throw new Error(`equipment: ${equipmentRes.error.message}`)
 
   return {
-    products:  (productsRes.data || []).map(dbRowToProduct),
+    products:  (productsRes.data || []).map(parseProductRow),
     colors:    colorsRes.data?.length > 0 ? colorsRes.data : DEFAULT_COLORS,
     cash:      cashRes.data
                  ? { registerAmount: cashRes.data.register_amount ?? 0,
@@ -224,7 +224,8 @@ function productToRow(p) {
   }
 }
 
-function dbRowToProduct(row) {
+// Realtime ハンドラからも使えるようにエクスポート
+export function parseProductRow(row) {
   return {
     id:          row.id,
     category:    row.category     ?? '',
@@ -237,7 +238,7 @@ function dbRowToProduct(row) {
     saleDate:    row.sale_date    ?? '',
     price:       row.price        ?? null,
     notes:       row.notes        ?? '',
-    photo:       null,                      // base64はDBに保存しない
-    photoUrl:    row.photo_url    ?? null,  // Storage URL
+    photo:       null,
+    photoUrl:    row.photo_url    ?? null,
   }
 }
