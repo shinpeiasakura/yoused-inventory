@@ -34,7 +34,8 @@ function dbSync(promise) {
 export default function App() {
   const [activeTab,  setActiveTab]  = useState(CATEGORIES[0])
   const [data,       setData]       = useState(() => mergeTempPhotos(loadCache() ?? getInitialData()))
-  const [syncStatus, setSyncStatus] = useState('idle')
+  const [syncStatus,     setSyncStatus]     = useState('idle')
+  const [realtimeStatus, setRealtimeStatus] = useState('connecting')
 
   const dataRef  = useRef(data)
   dataRef.current = data
@@ -148,7 +149,7 @@ export default function App() {
 
         return prev
       })
-    })
+    }, setRealtimeStatus)
   }, [])
 
   // 起動時に Supabase からロード
@@ -340,14 +341,22 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-gray-500 text-[11px]">{data.products.length} items</span>
+              {/* DB 初回ロード状態 */}
               {syncStatus === 'loading' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="同期中..." />
-              )}
-              {syncStatus === 'ok' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400" title="同期済み" />
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="読込中..." />
               )}
               {syncStatus === 'error' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="オフライン" />
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="DB接続エラー" />
+              )}
+              {/* Realtime 接続状態 */}
+              {syncStatus === 'ok' && realtimeStatus === 'connected' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400" title="リアルタイム同期中" />
+              )}
+              {syncStatus === 'ok' && realtimeStatus === 'connecting' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="リアルタイム接続中..." />
+              )}
+              {syncStatus === 'ok' && realtimeStatus === 'error' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" title="リアルタイム再接続中..." />
               )}
             </div>
           </div>
