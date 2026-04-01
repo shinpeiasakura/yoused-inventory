@@ -1,42 +1,88 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import CategoryNav from './components/CategoryNav'
 import InventoryView from './components/InventoryView'
 import CashOtherView from './components/CashOtherView'
-import { CATEGORIES, STORAGE_KEY, getInitialData } from './constants'
+import { CATEGORIES, STORAGE_KEY, DEFAULT_COLORS } from './constants'
 
 function genId() {
   return crypto.randomUUID()
 }
 
+// localStorage から安全に読み込む
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      const initial = getInitialData()
-      return {
-        ...initial,
-        ...parsed,
-        cash: { ...initial.cash, ...(parsed.cash || {}) },
-      }
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    if (!p || typeof p !== 'object') return null
+    return {
+      products:  Array.isArray(p.products)  ? p.products  : [],
+      colors:    Array.isArray(p.colors) && p.colors.length > 0
+                   ? p.colors
+                   : DEFAULT_COLORS,
+      cash: {
+        registerAmount: typeof p.cash?.registerAmount === 'number'
+                          ? p.cash.registerAmount
+                          : 0,
+        history: Array.isArray(p.cash?.history) ? p.cash.history : [],
+      },
+      equipment: Array.isArray(p.equipment) ? p.equipment : [],
     }
-  } catch {
-    // ignore parse errors
+  } catch (e) {
+    console.error('[YOUSED] load failed:', e)
+    return null
   }
-  return getInitialData()
+}
+
+function getInitialData() {
+  return {
+    products:  [],
+    colors:    DEFAULT_COLORS,
+    cash:      { registerAmount: 0, history: [] },
+    equipment: [],
+  }
+}
+
+// localStorage に保存。容量超過時は写真を除いて再試行
+function saveData(data) {
+  const attempt = (payload) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  }
+  try {
+    attempt(data)
+  } catch {
+    // 写真を除いて再試行
+    try {
+      attempt({
+        ...data,
+        products: data.products.map(({ photo, ...rest }) => rest),
+      })
+      console.warn('[YOUSED] 写真を除いて保存しました（容量不足）')
+    } catch (e2) {
+      console.error('[YOUSED] 保存に失敗しました:', e2)
+    }
+  }
 }
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(CATEGORIES[0])
-  const [data, setData] = useState(loadData)
+  const [data, setData] = useState(() => loadData() ?? getInitialData())
 
+  // 常に最新のデータを参照できる ref（beforeunload で使用）
+  const dataRef = useRef(data)
+  dataRef.current = data
+
+  // data が変わるたびに保存
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-    } catch {
-      // Storage quota exceeded
-    }
+    saveData(data)
   }, [data])
+
+  // ページを閉じる/リロード直前にも保存
+  useEffect(() => {
+    const flush = () => saveData(dataRef.current)
+    window.addEventListener('beforeunload', flush)
+    return () => window.removeEventListener('beforeunload', flush)
+  }, [])
 
   const addProduct = useCallback((product) => {
     setData(prev => ({
