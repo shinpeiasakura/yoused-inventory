@@ -207,7 +207,7 @@ export async function deleteEquipmentFromDb(id) {
 // ── 変換ヘルパー ──────────────────────────────────────────────────────────────
 
 function productToRow(p) {
-  return {
+  const row = {
     id:           p.id,
     category:     p.category     ?? '',
     color_id:     p.colorId      ?? '',
@@ -219,9 +219,12 @@ function productToRow(p) {
     sale_date:    p.saleDate     ?? '',
     price:        p.price        ?? null,
     notes:        p.notes        ?? '',
-    photo_url:    p.photoUrl     ?? null,   // Storage URL
     updated_at:   new Date().toISOString(),
   }
+  // photo_url は実際の URL がある場合のみ送る
+  // カラムが未作成の場合でも他フィールドの保存が失敗しないようにするため
+  if (p.photoUrl) row.photo_url = p.photoUrl
+  return row
 }
 
 // Realtime ハンドラからも使えるようにエクスポート
