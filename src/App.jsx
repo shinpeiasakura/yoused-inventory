@@ -336,8 +336,7 @@ export default function App() {
         <header className="bg-[#1A1A1A] safe-top">
           <div className="px-4 pt-3 pb-2 flex items-end justify-between">
             <div>
-              <h1 className="text-white text-lg font-bold tracking-[0.2em] leading-none m-0">YOUSED</h1>
-              <p className="text-[#C4956A] text-[10px] tracking-[0.3em] mt-0.5">INVENTORY MANAGER</p>
+              <img src="/logo.png" alt="YOUSED" className="h-8 w-auto object-contain" />
             </div>
             <div className="flex items-center gap-2">
               <span className="text-gray-500 text-[11px]">{data.products.length} items</span>
