@@ -4,18 +4,17 @@ import InventoryView from './components/InventoryView'
 import CashOtherView from './components/CashOtherView'
 import { CATEGORIES, DEFAULT_COLORS } from './constants'
 import {
-  loadCache, saveCache, mergePhotos,
+  loadCache, saveCache, mergeTempPhotos,
   loadFromSupabase, migrateToSupabase,
-  savePhoto, deletePhoto,
+  uploadPhoto, deletePhotoFromStorage,
+  saveTempPhoto, deleteTempPhoto,
   syncProduct, deleteProductFromDb,
   syncColor,
   syncCash,
   syncEquipmentItem, deleteEquipmentFromDb,
 } from './lib/db'
 
-function genId() {
-  return crypto.randomUUID()
-}
+function genId() { return crypto.randomUUID() }
 
 function getInitialData() {
   return {
@@ -26,51 +25,59 @@ function getInitialData() {
   }
 }
 
-// Supabase 操作のエラーを握りつぶさず、コンソールに記録
 function dbSync(promise) {
   promise.catch(e => console.error('[YOUSED] sync error:', e.message))
 }
 
 export default function App() {
   const [activeTab,  setActiveTab]  = useState(CATEGORIES[0])
-  const [data,       setData]       = useState(() => mergePhotos(loadCache() ?? getInitialData()))
-  const [syncStatus, setSyncStatus] = useState('idle') // 'idle' | 'loading' | 'ok' | 'error'
+  const [data,       setData]       = useState(() => mergeTempPhotos(loadCache() ?? getInitialData()))
+  const [syncStatus, setSyncStatus] = useState('idle')
 
-  const dataRef = useRef(data)
+  const dataRef  = useRef(data)
   dataRef.current = data
 
-  // data が変わるたびにキャッシュ保存（写真別保管）
+  // +/− の連打をデバウンスして Supabase への書き込みを間引く
+  const debounceTimers = useRef({})
+  const debouncedSync = useCallback((id) => {
+    clearTimeout(debounceTimers.current[id])
+    debounceTimers.current[id] = setTimeout(() => {
+      const product = dataRef.current.products.find(p => p.id === id)
+      if (product) dbSync(syncProduct(product))
+    }, 800)
+  }, [])
+
+  // data 変化時にキャッシュ保存
   useEffect(() => { saveCache(data) }, [data])
 
-  // ページ離脱前にキャッシュを確実に保存
+  // ページ離脱前に確実に保存
   useEffect(() => {
     const flush = () => saveCache(dataRef.current)
     window.addEventListener('beforeunload', flush)
     return () => window.removeEventListener('beforeunload', flush)
   }, [])
 
-  // 起動時に Supabase からデータをロード
+  // 起動時に Supabase からロード
   useEffect(() => {
     async function init() {
       setSyncStatus('loading')
       try {
         const remote = await loadFromSupabase()
 
-        // Supabase が空 & ローカルキャッシュにデータがある → 初回移行
+        // Supabase が空 & ローカルにデータあり → 初回移行
         const localCache = loadCache()
         if (remote.products.length === 0 && localCache?.products?.length > 0) {
           await migrateToSupabase(localCache)
           const migrated = await loadFromSupabase()
-          setData(mergePhotos(migrated))
+          setData(mergeTempPhotos(migrated))
         } else {
-          setData(mergePhotos(remote))
+          setData(mergeTempPhotos(remote))
         }
 
         setSyncStatus('ok')
       } catch (e) {
         console.error('[YOUSED] Supabase load failed:', e.message)
         setSyncStatus('error')
-        // キャッシュデータをそのまま使う（オフライン動作）
       }
     }
     init()
@@ -79,35 +86,114 @@ export default function App() {
   // ── Products ────────────────────────────────────────────────────────────────
 
   const addProduct = useCallback((product) => {
-    const newProduct = { ...product, id: genId() }
-    // 写真を localStorage に保存
-    if (newProduct.photo) savePhoto(newProduct.id, newProduct.photo)
+    const id = genId()
+    // photo は一時的に base64 で表示、photoUrl は Storage アップロード後に設定
+    const newProduct = { ...product, id, photoUrl: null }
+
+    if (newProduct.photo) {
+      saveTempPhoto(id, newProduct.photo)  // オフライン時の備え
+    }
+
     setData(prev => ({ ...prev, products: [...prev.products, newProduct] }))
-    dbSync(syncProduct(newProduct))
+
+    if (newProduct.photo) {
+      // 写真をアップロードして photo_url を更新
+      uploadPhoto(id, newProduct.photo)
+        .then(photoUrl => {
+          deleteTempPhoto(id)  // アップロード済みなのでローカルキャッシュ削除
+          setData(prev => {
+            const products = prev.products.map(p =>
+              p.id === id ? { ...p, photoUrl, photo: null } : p
+            )
+            const updated = products.find(p => p.id === id)
+            if (updated) dbSync(syncProduct(updated))
+            return { ...prev, products }
+          })
+        })
+        .catch(e => {
+          // アップロード失敗でも商品自体は保存
+          console.error('[YOUSED] photo upload failed:', e.message)
+          dbSync(syncProduct(newProduct))
+        })
+    } else {
+      dbSync(syncProduct(newProduct))
+    }
   }, [])
 
   const updateProduct = useCallback((id, updates) => {
-    // 写真の更新を localStorage に反映
-    if ('photo' in updates) {
-      if (updates.photo) savePhoto(id, updates.photo)
-      else deletePhoto(id)
+    const hasPhotoChange = 'photo' in updates
+
+    // 写真の更新処理
+    if (hasPhotoChange) {
+      if (updates.photo) {
+        // 新しい写真 → 一時保存 & アップロード
+        saveTempPhoto(id, updates.photo)
+        setData(prev => ({
+          ...prev,
+          products: prev.products.map(p =>
+            p.id === id ? { ...p, ...updates, photoUrl: null } : p
+          ),
+        }))
+        uploadPhoto(id, updates.photo)
+          .then(photoUrl => {
+            deleteTempPhoto(id)
+            setData(prev => {
+              const products = prev.products.map(p =>
+                p.id === id ? { ...p, photoUrl, photo: null } : p
+              )
+              const updated = products.find(p => p.id === id)
+              if (updated) dbSync(syncProduct(updated))
+              return { ...prev, products }
+            })
+          })
+          .catch(e => {
+            console.error('[YOUSED] photo upload failed:', e.message)
+            setData(prev => {
+              const product = prev.products.find(p => p.id === id)
+              if (product) dbSync(syncProduct(product))
+              return prev
+            })
+          })
+      } else {
+        // 写真を削除
+        deleteTempPhoto(id)
+        dbSync(deletePhotoFromStorage(id))
+        setData(prev => {
+          const products = prev.products.map(p =>
+            p.id === id ? { ...p, photo: null, photoUrl: null } : p
+          )
+          const updated = products.find(p => p.id === id)
+          if (updated) dbSync(syncProduct(updated))
+          return { ...prev, products }
+        })
+      }
+      return
     }
+
+    // 写真以外の更新
     setData(prev => ({
       ...prev,
       products: prev.products.map(p => (p.id === id ? { ...p, ...updates } : p)),
     }))
-    // Supabase に同期（写真は含まない）
-    setData(prev => {
-      const product = prev.products.find(p => p.id === id)
-      if (product) dbSync(syncProduct(product))
-      return prev
-    })
-  }, [])
+
+    // 在庫数は連打されるのでデバウンス、それ以外は即時同期
+    const isStockUpdate = 'storeStock' in updates || 'stock501' in updates
+    if (isStockUpdate) {
+      debouncedSync(id)
+    } else {
+      setData(prev => {
+        const product = prev.products.find(p => p.id === id)
+        if (product) dbSync(syncProduct(product))
+        return prev
+      })
+    }
+  }, [debouncedSync])
 
   const deleteProduct = useCallback((id) => {
-    deletePhoto(id)
+    deleteTempPhoto(id)
     setData(prev => ({ ...prev, products: prev.products.filter(p => p.id !== id) }))
     dbSync(deleteProductFromDb(id))
+    dbSync(deletePhotoFromStorage(id))
   }, [])
 
   // ── Colors ──────────────────────────────────────────────────────────────────
@@ -134,14 +220,11 @@ export default function App() {
   }, [])
 
   const updateEquipment = useCallback((id, updates) => {
-    setData(prev => ({
-      ...prev,
-      equipment: prev.equipment.map(e => (e.id === id ? { ...e, ...updates } : e)),
-    }))
     setData(prev => {
-      const item = prev.equipment.find(e => e.id === id)
-      if (item) dbSync(syncEquipmentItem(item))
-      return prev
+      const equipment = prev.equipment.map(e => (e.id === id ? { ...e, ...updates } : e))
+      const updated = equipment.find(e => e.id === id)
+      if (updated) dbSync(syncEquipmentItem(updated))
+      return { ...prev, equipment }
     })
   }, [])
 
@@ -163,7 +246,6 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-gray-500 text-[11px]">{data.products.length} items</span>
-              {/* 同期ステータスインジケーター */}
               {syncStatus === 'loading' && (
                 <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="同期中..." />
               )}
@@ -171,7 +253,7 @@ export default function App() {
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400" title="同期済み" />
               )}
               {syncStatus === 'error' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="オフライン（ローカルデータを使用中）" />
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="オフライン" />
               )}
             </div>
           </div>

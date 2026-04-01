@@ -29,6 +29,8 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
   const [expanded, setExpanded] = useState(false)
 
   const totalStock = (product.storeStock || 0) + (product.stock501 || 0)
+  // Supabase Storage の URL を優先、なければローカルの base64 を使用
+  const imgSrc = product.photoUrl || product.photo
 
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -38,9 +40,9 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
           onClick={() => setExpanded(v => !v)}
           className="relative w-[88px] flex-shrink-0"
         >
-          {product.photo ? (
+          {imgSrc ? (
             <img
-              src={product.photo}
+              src={imgSrc}
               alt={product.name}
               className="w-full h-full object-cover"
               style={{ minHeight: '88px' }}

@@ -2,52 +2,67 @@
  * db.js — データ永続化レイヤー
  *
  * 設計:
- *  - Supabase: テキストデータ（商品情報・色・レジ・備品）のソース・オブ・トゥルース
- *  - localStorage: 写真(base64)のみ + オフライン時のフォールバックキャッシュ
- *  - 写真はDBに保存しない（サイズが大きすぎるため）
+ *  - Supabase DB  : テキストデータ（商品情報・色・レジ・備品）+ photo_url
+ *  - Supabase Storage : 写真ファイル（product-photos バケット）
+ *  - localStorage : オフライン時フォールバックキャッシュ + アップロード前の一時写真
  */
 
 import { supabase } from './supabase'
 import { DEFAULT_COLORS } from '../constants'
 
-const CACHE_KEY  = 'yoused_cache_v2'   // テキストデータのキャッシュ
-const PHOTOS_KEY = 'yoused_photos_v1'  // 写真データ
+const CACHE_KEY  = 'yoused_cache_v2'
+const PHOTOS_KEY = 'yoused_photos_v1'   // アップロード前の一時写真
+const BUCKET     = 'product-photos'
 
-// ── 写真（localStorage のみ）─────────────────────────────────────────────────
+// ── Supabase Storage ─────────────────────────────────────────────────────────
 
-export function loadPhotos() {
-  try {
-    return JSON.parse(localStorage.getItem(PHOTOS_KEY) || '{}')
-  } catch {
-    return {}
-  }
+function base64ToBlob(dataUrl) {
+  const [, base64] = dataUrl.split(',')
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: 'image/jpeg' })
 }
 
-export function savePhoto(id, photo) {
-  const photos = loadPhotos()
-  if (photo) {
-    photos[id] = photo
-  } else {
-    delete photos[id]
-  }
-  try {
-    localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos))
-  } catch {
-    // 容量超過時は古いデータを削除して再試行
-    try {
-      localStorage.setItem(PHOTOS_KEY, JSON.stringify({ [id]: photo }))
-    } catch {
-      console.warn('[YOUSED] 写真の保存に失敗しました（容量不足）')
-    }
-  }
+export async function uploadPhoto(productId, base64DataUrl) {
+  const blob = base64ToBlob(base64DataUrl)
+  const path = `${productId}.jpg`
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: true, cacheControl: '3600' })
+
+  if (error) throw new Error(`uploadPhoto: ${error.message}`)
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
+  return data.publicUrl
 }
 
-export function deletePhoto(id) {
-  const photos = loadPhotos()
+export async function deletePhotoFromStorage(productId) {
+  const { error } = await supabase.storage.from(BUCKET).remove([`${productId}.jpg`])
+  if (error) console.warn('[YOUSED] deletePhotoFromStorage:', error.message)
+}
+
+// ── localStorage（一時写真キャッシュ）────────────────────────────────────────
+
+export function loadTempPhotos() {
+  try { return JSON.parse(localStorage.getItem(PHOTOS_KEY) || '{}') }
+  catch { return {} }
+}
+
+export function saveTempPhoto(id, photo) {
+  const photos = loadTempPhotos()
+  if (photo) photos[id] = photo
+  else delete photos[id]
+  try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos)) }
+  catch { /* 容量超過は無視 */ }
+}
+
+export function deleteTempPhoto(id) {
+  const photos = loadTempPhotos()
   delete photos[id]
-  try {
-    localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos))
-  } catch { /* ignore */ }
+  try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos)) }
+  catch { /* ignore */ }
 }
 
 // ── キャッシュ（localStorage）────────────────────────────────────────────────
@@ -55,15 +70,9 @@ export function deletePhoto(id) {
 export function loadCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) {
-      // 旧フォーマット（yoused_inventory_v1）からの移行を試みる
-      return migrateFromV1()
-    }
-    const p = JSON.parse(raw)
-    return sanitize(p)
-  } catch {
-    return null
-  }
+    if (!raw) return migrateFromV1()
+    return sanitize(JSON.parse(raw))
+  } catch { return null }
 }
 
 function migrateFromV1() {
@@ -71,39 +80,31 @@ function migrateFromV1() {
     const raw = localStorage.getItem('yoused_inventory_v1')
     if (!raw) return null
     const p = JSON.parse(raw)
-    // 旧フォーマットには写真が products に埋め込まれている → 分離して保存
-    const photos = loadPhotos()
+    // 旧フォーマット: 写真が products に埋め込まれている → 一時キャッシュに移行
+    const photos = loadTempPhotos()
     if (Array.isArray(p.products)) {
       p.products.forEach(prod => {
-        if (prod.photo && !photos[prod.id]) {
-          photos[prod.id] = prod.photo
-        }
+        if (prod.photo && !photos[prod.id]) photos[prod.id] = prod.photo
       })
       try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos)) } catch { /* ignore */ }
     }
     return sanitize(p)
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 export function saveCache(data) {
   try {
-    // 写真を除いてキャッシュ保存
-    const payload = {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
       ...data,
-      products: data.products.map(({ photo: _photo, ...rest }) => rest),
-    }
-    localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
-  } catch (e) {
-    console.error('[YOUSED] キャッシュ保存失敗:', e)
-  }
+      products: data.products.map(({ photo: _p, ...rest }) => rest),
+    }))
+  } catch (e) { console.error('[YOUSED] saveCache:', e) }
 }
 
 function sanitize(p) {
   if (!p || typeof p !== 'object') return null
   return {
-    products:  Array.isArray(p.products)  ? p.products  : [],
+    products:  Array.isArray(p.products) ? p.products : [],
     colors:    Array.isArray(p.colors) && p.colors.length > 0 ? p.colors : DEFAULT_COLORS,
     cash: {
       registerAmount: typeof p.cash?.registerAmount === 'number' ? p.cash.registerAmount : 0,
@@ -113,12 +114,16 @@ function sanitize(p) {
   }
 }
 
-// 写真をキャッシュデータにマージして返す
-export function mergePhotos(data) {
-  const photos = loadPhotos()
+// Supabaseデータに一時写真（アップロード前）をマージ
+export function mergeTempPhotos(data) {
+  const photos = loadTempPhotos()
   return {
     ...data,
-    products: data.products.map(p => ({ ...p, photo: photos[p.id] ?? null })),
+    products: data.products.map(p => ({
+      ...p,
+      // photoUrl があれば Storage から表示、なければ一時ローカル写真を使用
+      photo: p.photoUrl ? null : (photos[p.id] ?? null),
+    })),
   }
 }
 
@@ -137,8 +142,8 @@ export async function loadFromSupabase() {
   if (equipmentRes.error) throw new Error(`equipment: ${equipmentRes.error.message}`)
 
   return {
-    products:  (productsRes.data  || []).map(dbRowToProduct),
-    colors:    colorsRes.data?.length  > 0 ? colorsRes.data : DEFAULT_COLORS,
+    products:  (productsRes.data || []).map(dbRowToProduct),
+    colors:    colorsRes.data?.length > 0 ? colorsRes.data : DEFAULT_COLORS,
     cash:      cashRes.data
                  ? { registerAmount: cashRes.data.register_amount ?? 0,
                      history: cashRes.data.history ?? [] }
@@ -147,16 +152,12 @@ export async function loadFromSupabase() {
   }
 }
 
-// ローカルデータを Supabase に一括移行（初回セットアップ用）
 export async function migrateToSupabase(data) {
-  const productOps = data.products.map(p => syncProduct(p))
-  const colorOps   = data.colors
-    .filter(c => !DEFAULT_COLORS.find(d => d.id === c.id))  // カスタムカラーのみ
-    .map(c => syncColor(c))
-
   await Promise.all([
-    ...productOps,
-    ...colorOps,
+    ...data.products.map(p => syncProduct(p)),
+    ...data.colors
+      .filter(c => !DEFAULT_COLORS.find(d => d.id === c.id))
+      .map(c => syncColor(c)),
     syncCash(data.cash),
     ...data.equipment.map(e => syncEquipmentItem(e)),
   ])
@@ -176,30 +177,24 @@ export async function deleteProductFromDb(id) {
 
 export async function syncColor(color) {
   const { error } = await supabase.from('colors').upsert({
-    id:         color.id,
-    name:       color.name,
-    hex:        color.hex,
-    sort_order: 999,
+    id: color.id, name: color.name, hex: color.hex, sort_order: 999,
   })
   if (error) throw new Error(`syncColor: ${error.message}`)
 }
 
 export async function syncCash(cash) {
   const { error } = await supabase.from('cash_data').upsert({
-    id:              1,
+    id: 1,
     register_amount: cash.registerAmount ?? 0,
-    history:         cash.history ?? [],
-    updated_at:      new Date().toISOString(),
+    history: cash.history ?? [],
+    updated_at: new Date().toISOString(),
   })
   if (error) throw new Error(`syncCash: ${error.message}`)
 }
 
 export async function syncEquipmentItem(item) {
   const { error } = await supabase.from('equipment').upsert({
-    id:       item.id,
-    name:     item.name     ?? '',
-    quantity: item.quantity ?? 0,
-    notes:    item.notes    ?? '',
+    id: item.id, name: item.name ?? '', quantity: item.quantity ?? 0, notes: item.notes ?? '',
   })
   if (error) throw new Error(`syncEquipment: ${error.message}`)
 }
@@ -224,8 +219,8 @@ function productToRow(p) {
     sale_date:    p.saleDate     ?? '',
     price:        p.price        ?? null,
     notes:        p.notes        ?? '',
+    photo_url:    p.photoUrl     ?? null,   // Storage URL
     updated_at:   new Date().toISOString(),
-    // photo は保存しない
   }
 }
 
@@ -242,6 +237,7 @@ function dbRowToProduct(row) {
     saleDate:    row.sale_date    ?? '',
     price:       row.price        ?? null,
     notes:       row.notes        ?? '',
-    photo:       null,  // 写真は localStorage から別途マージ
+    photo:       null,                      // base64はDBに保存しない
+    photoUrl:    row.photo_url    ?? null,  // Storage URL
   }
 }
