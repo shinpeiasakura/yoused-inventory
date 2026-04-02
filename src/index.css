@@ -14,8 +14,8 @@
 
   body {
     margin: 0;
-    background-color: #F7F5F1;
-    color: #1A1A1A;
+    background-color: #F4EFE6;
+    color: #2C1A0E;
     font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
       'Noto Sans JP', 'Yu Gothic', sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -27,7 +27,8 @@
   }
 
   input[type="date"]::-webkit-calendar-picker-indicator {
-    opacity: 0.5;
+    opacity: 0.4;
+    filter: sepia(0.3);
   }
 }
 

@@ -3,19 +3,21 @@ import { useState } from 'react'
 function StockControl({ label, value, onChange }) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] text-gray-400 font-medium tracking-wide">{label}</span>
+      <span className="text-[9px] text-[#A8998A] font-medium tracking-widest uppercase">{label}</span>
       <div className="flex items-center gap-2">
         <button
           onClick={() => onChange(Math.max(0, value - 1))}
-          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-xl leading-none active:bg-gray-200 transition-colors"
+          className="w-7 h-7 flex items-center justify-center text-[#7A6858] text-lg leading-none bg-[#EDE7DA] active:bg-[#DDD5C5] transition-colors"
+          style={{ borderRadius: '2px' }}
           aria-label={`${label}を減らす`}
         >
           −
         </button>
-        <span className="w-7 text-center text-base font-bold text-[#1A1A1A] tabular-nums">{value}</span>
+        <span className="w-6 text-center text-sm font-bold text-[#2C1A0E] tabular-nums">{value}</span>
         <button
           onClick={() => onChange(value + 1)}
-          className="w-8 h-8 rounded-full bg-[#1A1A1A] flex items-center justify-center text-white text-xl leading-none active:bg-gray-700 transition-colors"
+          className="w-7 h-7 flex items-center justify-center text-[#F4EFE6] text-lg leading-none bg-[#2C1A0E] active:bg-[#4a2e1a] transition-colors"
+          style={{ borderRadius: '2px' }}
           aria-label={`${label}を増やす`}
         >
           +
@@ -29,74 +31,74 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
   const [expanded, setExpanded] = useState(false)
 
   const totalStock = (product.storeStock || 0) + (product.stock501 || 0)
-  // Supabase Storage の URL を優先、なければローカルの base64 を使用
   const imgSrc = product.photoUrl || product.photo
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <div className="bg-[#FDFAF5] overflow-hidden" style={{ borderRadius: '3px', boxShadow: '0 1px 4px rgba(44,26,14,0.08)' }}>
       <div className="flex gap-0">
         {/* Photo */}
         <button
           onClick={() => setExpanded(v => !v)}
-          className="relative w-[88px] flex-shrink-0"
+          className="relative w-[84px] flex-shrink-0"
         >
           {imgSrc ? (
             <img
               src={imgSrc}
               alt={product.name}
               className="w-full h-full object-cover"
-              style={{ minHeight: '88px' }}
+              style={{ minHeight: '84px' }}
             />
           ) : (
-            <div className="w-full bg-gray-50 flex flex-col items-center justify-center text-gray-300 gap-1" style={{ minHeight: '88px' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <div className="w-full bg-[#F0EBE0] flex flex-col items-center justify-center text-[#C4B8A8] gap-1" style={{ minHeight: '84px' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
                 <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
                 <circle cx="12" cy="13" r="4"/>
               </svg>
-              <span className="text-[9px]">写真</span>
+              <span className="text-[8px] tracking-widest uppercase">Photo</span>
             </div>
           )}
           {/* Stock badge */}
-          <div className={`absolute top-1.5 right-1.5 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${
-            totalStock === 0 ? 'bg-red-500 text-white' : 'bg-[#1A1A1A] text-white'
-          }`}>
+          <div className={`absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[9px] font-bold tracking-wide ${
+            totalStock === 0
+              ? 'bg-red-500/90 text-white'
+              : 'bg-[#2C1A0E]/85 text-[#F4EFE6]'
+          }`} style={{ borderRadius: '1px' }}>
             {totalStock}
           </div>
         </button>
 
         {/* Content */}
         <div className="flex-1 px-3 py-3 min-w-0">
-          {/* Name & actions */}
-          <div className="flex items-start justify-between gap-1 mb-1.5">
+          <div className="flex items-start justify-between gap-1 mb-2">
             <div className="min-w-0">
-              <h3 className="font-semibold text-[#1A1A1A] text-sm leading-tight truncate">
+              <h3 className="font-serif font-medium text-[#2C1A0E] text-[13px] leading-tight truncate">
                 {product.name || '名称未設定'}
               </h3>
-              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                 {color && (
-                  <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                  <span className="flex items-center gap-1 text-[10px] text-[#7A6858]">
                     <span
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-gray-200"
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-[#DDD5C5]"
                       style={{ backgroundColor: color.hex }}
                     />
                     {color.name}
                   </span>
                 )}
                 {product.size && (
-                  <span className="text-[11px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-md font-medium">
+                  <span className="text-[10px] text-[#7A6858] bg-[#EDE7DA] px-1.5 py-0.5 tracking-wide font-medium" style={{ borderRadius: '1px' }}>
                     {product.size}
                   </span>
                 )}
                 {product.price ? (
-                  <span className="text-[11px] text-gray-500">¥{Number(product.price).toLocaleString()}</span>
+                  <span className="text-[10px] text-[#8B5E3C] font-medium">¥{Number(product.price).toLocaleString()}</span>
                 ) : null}
               </div>
             </div>
             <button
               onClick={onEdit}
-              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-300 hover:text-gray-500 transition-colors"
+              className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-[#C4B8A8] hover:text-[#8B5E3C] transition-colors"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
@@ -121,27 +123,27 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-gray-50 px-4 py-3 bg-gray-50/50">
+        <div className="border-t border-[#EDE7DA] px-4 py-3 bg-[#F4EFE6]">
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <p className="text-gray-400 mb-0.5">入荷日</p>
-              <p className="font-medium text-gray-700">{product.arrivalDate || '—'}</p>
+              <p className="text-[9px] text-[#A8998A] mb-0.5 tracking-widest uppercase">入荷日</p>
+              <p className="font-medium text-[#2C1A0E] text-xs">{product.arrivalDate || '—'}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-0.5">販売日</p>
-              <p className="font-medium text-gray-700">{product.saleDate || '—'}</p>
+              <p className="text-[9px] text-[#A8998A] mb-0.5 tracking-widest uppercase">販売日</p>
+              <p className="font-medium text-[#2C1A0E] text-xs">{product.saleDate || '—'}</p>
             </div>
             {product.notes ? (
               <div className="col-span-2">
-                <p className="text-gray-400 mb-0.5">メモ</p>
-                <p className="text-gray-700 whitespace-pre-wrap">{product.notes}</p>
+                <p className="text-[9px] text-[#A8998A] mb-0.5 tracking-widest uppercase">メモ</p>
+                <p className="text-[#7A6858] whitespace-pre-wrap text-xs">{product.notes}</p>
               </div>
             ) : null}
           </div>
           <div className="mt-3 flex justify-end">
             <button
               onClick={onDelete}
-              className="text-xs text-red-400 active:text-red-600 px-2 py-1"
+              className="text-xs text-[#A8998A] hover:text-red-500 transition-colors px-2 py-1 tracking-wide"
             >
               削除する
             </button>

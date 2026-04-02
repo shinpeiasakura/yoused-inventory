@@ -32,15 +32,14 @@ function dbSync(promise) {
 }
 
 export default function App() {
-  const [activeTab,  setActiveTab]  = useState(CATEGORIES[0])
-  const [data,       setData]       = useState(() => mergeTempPhotos(loadCache() ?? getInitialData()))
+  const [activeTab,      setActiveTab]      = useState(CATEGORIES[0])
+  const [data,           setData]           = useState(() => mergeTempPhotos(loadCache() ?? getInitialData()))
   const [syncStatus,     setSyncStatus]     = useState('idle')
   const [realtimeStatus, setRealtimeStatus] = useState('connecting')
 
   const dataRef  = useRef(data)
   dataRef.current = data
 
-  // +/− の連打をデバウンスして Supabase への書き込みを間引く
   const debounceTimers = useRef({})
   const debouncedSync = useCallback((id) => {
     clearTimeout(debounceTimers.current[id])
@@ -50,29 +49,25 @@ export default function App() {
     }, 800)
   }, [])
 
-  // data 変化時にキャッシュ保存
   useEffect(() => { saveCache(data) }, [data])
 
-  // ページ離脱前に確実に保存
   useEffect(() => {
     const flush = () => saveCache(dataRef.current)
     window.addEventListener('beforeunload', flush)
     return () => window.removeEventListener('beforeunload', flush)
   }, [])
 
-  // ── Realtime 購読（他端末の変更をリアルタイムで反映）────────────────────────
+  // ── Realtime 購読 ────────────────────────────────────────────────────────────
   useEffect(() => {
     return subscribeToRealtime((table, { eventType, new: newRow, old: oldRow }) => {
       setData(prev => {
 
-        // ── products ──────────────────────────────────────────────────────────
         if (table === 'products') {
           const incoming = parseProductRow(newRow ?? {})
 
           if (eventType === 'INSERT') {
             const exists = prev.products.find(p => p.id === incoming.id)
             if (exists) {
-              // 自分自身の変更が返ってきた → photo(base64)を保持しつつ reconcile
               return {
                 ...prev,
                 products: prev.products.map(p =>
@@ -87,9 +82,7 @@ export default function App() {
             return {
               ...prev,
               products: prev.products.map(p =>
-                p.id === incoming.id
-                  ? { ...incoming, photo: p.photo }  // アップロード中の base64 を保持
-                  : p
+                p.id === incoming.id ? { ...incoming, photo: p.photo } : p
               ),
             }
           }
@@ -102,7 +95,6 @@ export default function App() {
           }
         }
 
-        // ── colors ────────────────────────────────────────────────────────────
         if (table === 'colors') {
           if (eventType === 'INSERT') {
             if (prev.colors.find(c => c.id === newRow.id)) return prev
@@ -116,7 +108,6 @@ export default function App() {
           }
         }
 
-        // ── cash_data ─────────────────────────────────────────────────────────
         if (table === 'cash_data' && eventType !== 'DELETE') {
           return {
             ...prev,
@@ -127,7 +118,6 @@ export default function App() {
           }
         }
 
-        // ── equipment ─────────────────────────────────────────────────────────
         if (table === 'equipment') {
           if (eventType === 'INSERT') {
             if (prev.equipment.find(e => e.id === newRow.id)) return prev
@@ -158,8 +148,6 @@ export default function App() {
       setSyncStatus('loading')
       try {
         const remote = await loadFromSupabase()
-
-        // Supabase が空 & ローカルにデータあり → 初回移行
         const localCache = loadCache()
         if (remote.products.length === 0 && localCache?.products?.length > 0) {
           await migrateToSupabase(localCache)
@@ -168,7 +156,6 @@ export default function App() {
         } else {
           setData(mergeTempPhotos(remote))
         }
-
         setSyncStatus('ok')
       } catch (e) {
         console.error('[YOUSED] Supabase load failed:', e.message)
@@ -182,20 +169,18 @@ export default function App() {
 
   const addProduct = useCallback((product) => {
     const id = genId()
-    // photo は一時的に base64 で表示、photoUrl は Storage アップロード後に設定
     const newProduct = { ...product, id, photoUrl: null }
 
     if (newProduct.photo) {
-      saveTempPhoto(id, newProduct.photo)  // オフライン時の備え
+      saveTempPhoto(id, newProduct.photo)
     }
 
     setData(prev => ({ ...prev, products: [...prev.products, newProduct] }))
 
     if (newProduct.photo) {
-      // 写真をアップロードして photo_url を更新
       uploadPhoto(id, newProduct.photo)
         .then(photoUrl => {
-          deleteTempPhoto(id)  // アップロード済みなのでローカルキャッシュ削除
+          deleteTempPhoto(id)
           setData(prev => {
             const products = prev.products.map(p =>
               p.id === id ? { ...p, photoUrl, photo: null } : p
@@ -206,7 +191,6 @@ export default function App() {
           })
         })
         .catch(e => {
-          // アップロード失敗でも商品自体は保存
           console.error('[YOUSED] photo upload failed:', e.message)
           dbSync(syncProduct(newProduct))
         })
@@ -218,10 +202,8 @@ export default function App() {
   const updateProduct = useCallback((id, updates) => {
     const hasPhotoChange = 'photo' in updates
 
-    // 写真の更新処理
     if (hasPhotoChange) {
       if (updates.photo) {
-        // 新しい写真 → 一時保存 & アップロード
         saveTempPhoto(id, updates.photo)
         setData(prev => ({
           ...prev,
@@ -250,7 +232,6 @@ export default function App() {
             })
           })
       } else {
-        // 写真を削除
         deleteTempPhoto(id)
         dbSync(deletePhotoFromStorage(id))
         setData(prev => {
@@ -265,13 +246,11 @@ export default function App() {
       return
     }
 
-    // 写真以外の更新
     setData(prev => ({
       ...prev,
       products: prev.products.map(p => (p.id === id ? { ...p, ...updates } : p)),
     }))
 
-    // 在庫数は連打されるのでデバウンス、それ以外は即時同期
     const isStockUpdate = 'storeStock' in updates || 'stock501' in updates
     if (isStockUpdate) {
       debouncedSync(id)
@@ -331,35 +310,37 @@ export default function App() {
   const categoryProducts = data.products.filter(p => p.category === activeTab)
 
   return (
-    <div className="min-h-dvh bg-[#F7F5F1]">
+    <div className="min-h-dvh bg-[#F4EFE6]">
       <div className="sticky top-0 z-40">
-        <header className="bg-[#1A1A1A] safe-top">
-          <div className="px-4 pt-3 pb-2 flex items-end justify-between">
-            <div>
-              <img src="/logo.png" alt="YOUSED" className="h-8 w-auto object-contain" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500 text-[11px]">{data.products.length} items</span>
-              {/* DB 初回ロード状態 */}
+        {/* ── Header ── */}
+        <header className="bg-[#2C1A0E] safe-top">
+          <div className="px-4 pt-3 pb-2.5 flex items-center justify-between">
+            <img src="/logo.png" alt="YOUSED" className="h-8 w-auto object-contain" />
+            <div className="flex items-center gap-2.5">
+              <span className="text-[#A8998A] text-[11px] tracking-widest font-light">
+                {data.products.length} items
+              </span>
+              {/* DB ロード状態 */}
               {syncStatus === 'loading' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="読込中..." />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#C17F55] animate-pulse" title="読込中..." />
               )}
               {syncStatus === 'error' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="DB接続エラー" />
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="接続エラー" />
               )}
-              {/* Realtime 接続状態 */}
+              {/* Realtime 状態 */}
               {syncStatus === 'ok' && realtimeStatus === 'connected' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400" title="リアルタイム同期中" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#8B9E6A]" title="リアルタイム同期中" />
               )}
               {syncStatus === 'ok' && realtimeStatus === 'connecting' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" title="リアルタイム接続中..." />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#C17F55] animate-pulse" title="接続中..." />
               )}
               {syncStatus === 'ok' && realtimeStatus === 'error' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" title="リアルタイム再接続中..." />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#C17F55] animate-pulse" title="再接続中..." />
               )}
             </div>
           </div>
         </header>
+
         <CategoryNav active={activeTab} onChange={setActiveTab} />
       </div>
 

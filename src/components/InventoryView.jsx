@@ -17,7 +17,6 @@ export default function InventoryView({
   const [showForm, setShowForm] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
 
-  // Colors that have at least one product in this category
   const usedColorIds = [...new Set(products.map(p => p.colorId))]
   const usedColors = colors.filter(c => usedColorIds.includes(c.id))
 
@@ -26,7 +25,7 @@ export default function InventoryView({
       ? products
       : products.filter(p => p.colorId === activeColor)
 
-  const storeTotal = filtered.reduce((s, p) => s + (p.storeStock || 0), 0)
+  const storeTotal    = filtered.reduce((s, p) => s + (p.storeStock || 0), 0)
   const stock501Total = filtered.reduce((s, p) => s + (p.stock501 || 0), 0)
 
   const openAdd = () => {
@@ -61,7 +60,6 @@ export default function InventoryView({
 
   return (
     <div className="relative">
-      {/* Color tabs */}
       <ColorTabs
         usedColors={usedColors}
         activeColor={activeColor}
@@ -71,28 +69,28 @@ export default function InventoryView({
       />
 
       {/* Stats bar */}
-      <div className="px-4 py-2 bg-white border-b border-gray-100 flex items-center gap-4 text-xs text-gray-400">
-        <span className="font-medium text-gray-600">{filtered.length} 件</span>
-        <span>
-          店舗 <span className="font-semibold text-gray-700">{storeTotal}</span>
+      <div className="px-4 py-2.5 bg-[#FDFAF5] border-b border-[#DDD5C5] flex items-center gap-4">
+        <span className="text-[11px] font-semibold text-[#2C1A0E] tracking-wide">{filtered.length} 点</span>
+        <span className="text-[11px] text-[#A8998A]">
+          店舗 <span className="font-semibold text-[#2C1A0E]">{storeTotal}</span>
         </span>
-        <span>
-          501 <span className="font-semibold text-gray-700">{stock501Total}</span>
+        <span className="text-[11px] text-[#A8998A]">
+          501 <span className="font-semibold text-[#2C1A0E]">{stock501Total}</span>
         </span>
-        <span>
-          計 <span className="font-semibold text-[#C4956A]">{storeTotal + stock501Total}</span>
+        <span className="text-[11px] text-[#A8998A]">
+          計 <span className="font-semibold text-[#8B5E3C]">{storeTotal + stock501Total}</span>
         </span>
       </div>
 
       {/* Product list */}
-      <div className="p-3 space-y-2.5">
+      <div className="p-3 space-y-2">
         {filtered.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mx-auto mb-3 text-gray-200">
+          <div className="text-center py-20">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="0.8" className="mx-auto mb-4 text-[#C4B8A8]">
               <path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
             </svg>
-            <p className="text-sm font-medium text-gray-400">商品がありません</p>
-            <p className="text-xs text-gray-300 mt-1">右下の + ボタンで追加してください</p>
+            <p className="font-serif text-sm text-[#A8998A] mb-1">商品がありません</p>
+            <p className="text-[11px] text-[#C4B8A8] tracking-wide">右下の ＋ から追加してください</p>
           </div>
         ) : (
           filtered.map(product => (
@@ -111,7 +109,8 @@ export default function InventoryView({
       {/* FAB */}
       <button
         onClick={openAdd}
-        className="fixed right-4 fab-bottom z-30 w-14 h-14 rounded-full bg-[#1A1A1A] text-white shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-transform"
+        className="fixed right-4 fab-bottom z-30 w-14 h-14 bg-[#2C1A0E] text-[#F4EFE6] shadow-lg flex items-center justify-center text-2xl active:scale-95 transition-transform"
+        style={{ borderRadius: '3px' }}
         aria-label="商品を追加"
       >
         +

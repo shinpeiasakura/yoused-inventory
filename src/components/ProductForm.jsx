@@ -28,22 +28,23 @@ function compressImage(file, maxSize = 900, quality = 0.82) {
   })
 }
 
+const LABEL_CLS = 'block text-[9px] font-semibold text-[#A8998A] mb-2 tracking-widest uppercase'
 const INPUT_CLS =
-  'w-full px-4 py-3 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:border-[#C4956A] focus:ring-1 focus:ring-[#C4956A]/30'
+  'w-full px-4 py-3 border border-[#DDD5C5] text-sm bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C] focus:ring-1 focus:ring-[#8B5E3C]/20 placeholder:text-[#C4B8A8] transition-colors'
 
 export default function ProductForm({ product, category, colors, onSave, onCancel, onAddColor }) {
   const fileRef = useRef(null)
   const [form, setForm] = useState({
-    name: product?.name ?? '',
-    colorId: product?.colorId ?? (colors[0]?.id ?? ''),
-    size: product?.size ?? '',
-    storeStock: product?.storeStock ?? 0,
-    stock501: product?.stock501 ?? 0,
+    name:        product?.name        ?? '',
+    colorId:     product?.colorId     ?? (colors[0]?.id ?? ''),
+    size:        product?.size        ?? '',
+    storeStock:  product?.storeStock  ?? 0,
+    stock501:    product?.stock501    ?? 0,
     arrivalDate: product?.arrivalDate ?? '',
-    saleDate: product?.saleDate ?? '',
-    price: product?.price ?? '',
-    notes: product?.notes ?? '',
-    photo: product?.photo ?? null,
+    saleDate:    product?.saleDate    ?? '',
+    price:       product?.price       ?? '',
+    notes:       product?.notes       ?? '',
+    photo:       product?.photo       ?? null,
   })
   const [addingColor, setAddingColor] = useState(false)
   const [newColorName, setNewColorName] = useState('')
@@ -71,7 +72,6 @@ export default function ProductForm({ product, category, colors, onSave, onCance
     if (!exists) {
       onAddColor({ name, hex: newColorHex })
     }
-    // Select the newly added or found color by name after it appears
     setNewColorName('')
     setNewColorHex('#888888')
     setAddingColor(false)
@@ -82,8 +82,8 @@ export default function ProductForm({ product, category, colors, onSave, onCance
     onSave({
       ...form,
       storeStock: Math.max(0, Number(form.storeStock) || 0),
-      stock501: Math.max(0, Number(form.stock501) || 0),
-      price: form.price !== '' ? Number(form.price) : null,
+      stock501:   Math.max(0, Number(form.stock501)   || 0),
+      price:      form.price !== '' ? Number(form.price) : null,
     })
   }
 
@@ -91,39 +91,40 @@ export default function ProductForm({ product, category, colors, onSave, onCance
     <form onSubmit={handleSubmit} className="px-5 pt-4 pb-8 space-y-5">
       {/* Category badge */}
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-bold text-[#1A1A1A]">
-          {product ? '商品を編集' : '商品を追加'}
-        </h3>
-        <span className="text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full font-medium">
+        <p className="text-[9px] text-[#A8998A] tracking-widest uppercase font-medium">
+          Category
+        </p>
+        <span className="text-[10px] bg-[#EDE7DA] text-[#7A6858] px-2.5 py-1 tracking-widest uppercase font-medium" style={{ borderRadius: '2px' }}>
           {category}
         </span>
       </div>
 
       {/* Photo */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-2 tracking-wide uppercase">写真</label>
+        <label className={LABEL_CLS}>写真</label>
         <button
           type="button"
           onClick={() => fileRef.current.click()}
-          className="w-full h-44 rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center active:opacity-80 transition-opacity relative"
+          className="w-full h-44 overflow-hidden border border-dashed border-[#DDD5C5] bg-[#F4EFE6] flex items-center justify-center active:opacity-80 transition-opacity relative"
+          style={{ borderRadius: '2px' }}
         >
           {photoLoading ? (
-            <div className="text-gray-400 text-sm">読み込み中...</div>
+            <div className="text-[#A8998A] text-sm tracking-wide">読み込み中...</div>
           ) : form.photo ? (
             <>
               <img src={form.photo} alt="product" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                <span className="text-white text-sm font-medium bg-black/40 px-3 py-1 rounded-full">変更</span>
+              <div className="absolute inset-0 bg-[#2C1A0E]/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                <span className="text-[#F4EFE6] text-xs font-medium bg-[#2C1A0E]/60 px-3 py-1 tracking-widest uppercase" style={{ borderRadius: '1px' }}>変更</span>
               </div>
             </>
           ) : (
-            <div className="text-center text-gray-400">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto mb-2">
+            <div className="text-center text-[#C4B8A8]">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className="mx-auto mb-2">
                 <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
                 <circle cx="12" cy="13" r="4"/>
               </svg>
-              <p className="text-sm">タップして写真を追加</p>
-              <p className="text-xs mt-0.5 text-gray-300">カメラまたはライブラリから</p>
+              <p className="text-xs tracking-wide">タップして写真を追加</p>
+              <p className="text-[10px] mt-0.5 text-[#D4C9B8] tracking-wide">カメラまたはライブラリ</p>
             </div>
           )}
         </button>
@@ -139,36 +140,38 @@ export default function ProductForm({ product, category, colors, onSave, onCance
 
       {/* Name */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-2 tracking-wide uppercase">商品名</label>
+        <label className={LABEL_CLS}>商品名</label>
         <input
           type="text"
           value={form.name}
           onChange={e => set('name', e.target.value)}
           placeholder="例: Leather Jacket Type-A"
           className={INPUT_CLS}
+          style={{ borderRadius: '2px' }}
         />
       </div>
 
       {/* Color */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-semibold text-gray-500 tracking-wide uppercase">カラー</label>
+          <label className={LABEL_CLS + ' mb-0'}>カラー</label>
           <button
             type="button"
             onClick={() => setAddingColor(v => !v)}
-            className="text-xs text-[#C4956A] font-medium"
+            className="text-[10px] text-[#8B5E3C] font-medium tracking-wide"
           >
             {addingColor ? 'キャンセル' : '+ 新しいカラー'}
           </button>
         </div>
 
         {addingColor && (
-          <div className="flex items-center gap-2 mb-3 p-3 bg-gray-50 rounded-xl">
+          <div className="flex items-center gap-2 mb-3 p-3 bg-[#F4EFE6] border border-[#DDD5C5]" style={{ borderRadius: '2px' }}>
             <input
               type="color"
               value={newColorHex}
               onChange={e => setNewColorHex(e.target.value)}
-              className="w-9 h-9 rounded-lg cursor-pointer border border-gray-200 p-0.5 flex-shrink-0"
+              className="w-9 h-9 cursor-pointer border border-[#DDD5C5] p-0.5 flex-shrink-0"
+              style={{ borderRadius: '2px' }}
             />
             <input
               type="text"
@@ -177,12 +180,14 @@ export default function ProductForm({ product, category, colors, onSave, onCance
               onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddColor())}
               placeholder="カラー名"
               autoFocus
-              className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none"
+              className="flex-1 px-3 py-2 border border-[#DDD5C5] text-sm bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C] placeholder:text-[#C4B8A8]"
+              style={{ borderRadius: '2px' }}
             />
             <button
               type="button"
               onClick={handleAddColor}
-              className="px-3 py-2 bg-[#1A1A1A] text-white text-xs rounded-lg font-medium flex-shrink-0"
+              className="px-3 py-2 bg-[#2C1A0E] text-[#F4EFE6] text-xs font-medium flex-shrink-0 tracking-wide"
+              style={{ borderRadius: '2px' }}
             >
               追加
             </button>
@@ -195,14 +200,15 @@ export default function ProductForm({ product, category, colors, onSave, onCance
               key={color.id}
               type="button"
               onClick={() => set('colorId', color.id)}
-              className={`flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+              className={`flex items-center gap-1.5 pl-2 pr-3 py-1.5 text-[11px] font-medium transition-all border ${
                 form.colorId === color.id
-                  ? 'bg-[#1A1A1A] text-white ring-2 ring-[#1A1A1A] ring-offset-1'
-                  : 'bg-gray-100 text-gray-600'
+                  ? 'bg-[#2C1A0E] text-[#F4EFE6] border-[#2C1A0E]'
+                  : 'bg-transparent text-[#7A6858] border-[#DDD5C5]'
               }`}
+              style={{ borderRadius: '2px' }}
             >
               <span
-                className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-white/50"
+                className="w-3 h-3 rounded-full flex-shrink-0"
                 style={{ backgroundColor: color.hex }}
               />
               {color.name}
@@ -213,38 +219,41 @@ export default function ProductForm({ product, category, colors, onSave, onCance
 
       {/* Size */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-2 tracking-wide uppercase">サイズ</label>
+        <label className={LABEL_CLS}>サイズ</label>
         <input
           type="text"
           value={form.size}
           onChange={e => set('size', e.target.value)}
           placeholder="例: M, L, XL, 34, FREE"
           className={INPUT_CLS}
+          style={{ borderRadius: '2px' }}
         />
       </div>
 
       {/* Stock */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-2 tracking-wide uppercase">在庫数</label>
+        <label className={LABEL_CLS}>在庫数</label>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <p className="text-xs text-gray-400 mb-1.5 text-center">店舗</p>
+            <p className="text-[10px] text-[#A8998A] mb-1.5 text-center tracking-widest uppercase">店舗</p>
             <input
               type="number"
               min="0"
               value={form.storeStock}
               onChange={e => set('storeStock', e.target.value)}
               className={INPUT_CLS + ' text-center text-lg font-bold'}
+              style={{ borderRadius: '2px' }}
             />
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-1.5 text-center">501</p>
+            <p className="text-[10px] text-[#A8998A] mb-1.5 text-center tracking-widest uppercase">501</p>
             <input
               type="number"
               min="0"
               value={form.stock501}
               onChange={e => set('stock501', e.target.value)}
               className={INPUT_CLS + ' text-center text-lg font-bold'}
+              style={{ borderRadius: '2px' }}
             />
           </div>
         </div>
@@ -252,24 +261,26 @@ export default function ProductForm({ product, category, colors, onSave, onCance
 
       {/* Dates */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-2 tracking-wide uppercase">日付</label>
+        <label className={LABEL_CLS}>日付</label>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <p className="text-xs text-gray-400 mb-1.5">入荷日</p>
+            <p className="text-[10px] text-[#A8998A] mb-1.5 tracking-wide">入荷日</p>
             <input
               type="date"
               value={form.arrivalDate}
               onChange={e => set('arrivalDate', e.target.value)}
               className={INPUT_CLS}
+              style={{ borderRadius: '2px' }}
             />
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-1.5">販売日</p>
+            <p className="text-[10px] text-[#A8998A] mb-1.5 tracking-wide">販売日</p>
             <input
               type="date"
               value={form.saleDate}
               onChange={e => set('saleDate', e.target.value)}
               className={INPUT_CLS}
+              style={{ borderRadius: '2px' }}
             />
           </div>
         </div>
@@ -277,9 +288,9 @@ export default function ProductForm({ product, category, colors, onSave, onCance
 
       {/* Price */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-2 tracking-wide uppercase">価格</label>
+        <label className={LABEL_CLS}>価格</label>
         <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">¥</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A8998A] text-sm">¥</span>
           <input
             type="number"
             min="0"
@@ -287,19 +298,21 @@ export default function ProductForm({ product, category, colors, onSave, onCance
             onChange={e => set('price', e.target.value)}
             placeholder="0"
             className={INPUT_CLS + ' pl-8'}
+            style={{ borderRadius: '2px' }}
           />
         </div>
       </div>
 
       {/* Notes */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 mb-2 tracking-wide uppercase">メモ</label>
+        <label className={LABEL_CLS}>メモ</label>
         <textarea
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
           rows={3}
           placeholder="備考・状態など"
           className={INPUT_CLS + ' resize-none'}
+          style={{ borderRadius: '2px' }}
         />
       </div>
 
@@ -308,13 +321,15 @@ export default function ProductForm({ product, category, colors, onSave, onCance
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 py-3.5 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 active:bg-gray-50"
+          className="flex-1 py-3.5 border border-[#DDD5C5] text-sm font-medium text-[#7A6858] tracking-wide active:bg-[#EDE7DA] transition-colors"
+          style={{ borderRadius: '2px' }}
         >
           キャンセル
         </button>
         <button
           type="submit"
-          className="flex-1 py-3.5 rounded-2xl bg-[#1A1A1A] text-white text-sm font-semibold active:bg-gray-800"
+          className="flex-1 py-3.5 bg-[#2C1A0E] text-[#F4EFE6] text-sm font-medium tracking-widest active:bg-[#4a2e1a] transition-colors"
+          style={{ borderRadius: '2px' }}
         >
           保存する
         </button>
