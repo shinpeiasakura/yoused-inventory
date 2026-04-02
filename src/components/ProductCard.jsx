@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 
 function compressImage(file, maxSize = 900, quality = 0.82) {
   return new Promise((resolve) => {
@@ -55,33 +55,64 @@ function StockControl({ label, value, onChange }) {
   )
 }
 
-// カメラアイコン SVG
 function CameraIcon({ size = 14 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ flexShrink: 0 }}>
       <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
       <circle cx="12" cy="13" r="4"/>
     </svg>
   )
 }
 
-export default function ProductCard({ product, color, onEdit, onDelete, onUpdateStock, onUpdatePhoto }) {
-  const [expanded, setExpanded]   = useState(false)
-  const [compressing, setCompressing] = useState(false)
-  const fileRef = useRef(null)
-
-  const totalStock = (product.storeStock || 0) + (product.stock501 || 0)
-  // photoUrl = Storage URL（確定）, photo = base64（アップロード中の一時表示）
-  const imgSrc = product.photoUrl || product.photo
-  // base64 があって photoUrl がない = Supabase へのアップロード進行中
-  const uploadingToStorage = !!product.photo && !product.photoUrl
-  const showSpinner = compressing || uploadingToStorage
-
-  const handleFileChange = async (e) => {
+/**
+ * iOS Safari では input[type="file"] を JavaScript の .click() で
+ * 起動できないため、<label> で <input> を直接ラップして
+ * ユーザーのタップがそのまま input に伝わるようにする。
+ * input は opacity:0 + position:absolute で視覚的に隠しつつ、
+ * display:none や visibility:hidden は使わない（iOS で無効化されるため）。
+ */
+function PhotoInput({ onFile, children, className, style }) {
+  const handleChange = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     // 同じファイルを再選択できるようリセット
     e.target.value = ''
+    onFile(file)
+  }
+
+  return (
+    <label className={className} style={{ ...style, position: 'relative', cursor: 'pointer' }}>
+      {children}
+      {/* iOS Safari 対応: opacity:0 で視覚的に隠し、inset:0 でタップ領域を label 全体に広げる */}
+      <input
+        type="file"
+        accept="image/*"
+        onChange={handleChange}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          opacity: 0,
+          width: '100%',
+          height: '100%',
+          cursor: 'pointer',
+          fontSize: 0,         // iOS Safari でのズーム防止
+        }}
+      />
+    </label>
+  )
+}
+
+export default function ProductCard({ product, color, onEdit, onDelete, onUpdateStock, onUpdatePhoto }) {
+  const [expanded,    setExpanded]    = useState(false)
+  const [compressing, setCompressing] = useState(false)
+
+  const totalStock = (product.storeStock || 0) + (product.stock501 || 0)
+  const imgSrc = product.photoUrl || product.photo
+  // base64 はあるが Storage URL がまだない = アップロード中
+  const uploadingToStorage = !!product.photo && !product.photoUrl
+  const showSpinner = compressing || uploadingToStorage
+
+  const handleFile = async (file) => {
     setCompressing(true)
     try {
       const base64 = await compressImage(file)
@@ -91,67 +122,65 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
     }
   }
 
-  const openPicker = (e) => {
-    e.stopPropagation()
-    fileRef.current?.click()
-  }
-
   return (
     <div
       className="bg-[#FDFAF5] overflow-hidden"
       style={{ borderRadius: '3px', boxShadow: '0 1px 4px rgba(44,26,14,0.08)' }}
     >
       <div className="flex gap-0">
-        {/* ── 写真エリア ─────────────────────────────────────────── */}
-        <div className="relative w-[84px] flex-shrink-0" style={{ minHeight: '84px' }}>
+
+        {/* ── 写真エリア ──────────────────────────────────────────── */}
+        <div className="relative flex-shrink-0 w-[84px]" style={{ minHeight: '84px' }}>
 
           {imgSrc ? (
-            /* 写真あり: タップで詳細展開、カメラアイコンで写真変更 */
+            /* ── 写真あり ──────────────────────────────────── */
             <>
+              {/* タップで詳細展開 */}
               <button
                 onClick={() => setExpanded(v => !v)}
                 className="w-full h-full block"
-                aria-label="詳細を表示"
+                style={{ minHeight: '84px' }}
+                aria-expanded={expanded}
               >
                 <img
                   src={imgSrc}
                   alt={product.name}
                   className="w-full h-full object-cover"
-                  style={{ minHeight: '84px' }}
+                  style={{ minHeight: '84px', display: 'block' }}
                 />
               </button>
 
-              {/* 写真変更ボタン（左下） */}
+              {/* 写真変更ボタン（左下）— label で input を直接ラップ */}
               {!showSpinner && (
-                <button
-                  onClick={openPicker}
-                  className="absolute bottom-1.5 left-1.5 w-6 h-6 bg-[#2C1A0E]/65 backdrop-blur-sm flex items-center justify-center text-[#F4EFE6] active:bg-[#2C1A0E]/90 transition-colors"
+                <PhotoInput
+                  onFile={handleFile}
+                  className="absolute bottom-1.5 left-1.5 w-7 h-7 bg-[#2C1A0E]/65 backdrop-blur-sm flex items-center justify-center text-[#F4EFE6] active:bg-[#2C1A0E]/90 overflow-hidden"
                   style={{ borderRadius: '2px' }}
-                  aria-label="写真を変更"
                 >
-                  <CameraIcon size={12} />
-                </button>
+                  <CameraIcon size={13} />
+                </PhotoInput>
               )}
             </>
           ) : (
-            /* 写真なし: タップでファイルピッカーを開く */
-            <button
-              onClick={openPicker}
-              className="w-full h-full bg-[#F0EBE0] flex flex-col items-center justify-center text-[#C4B8A8] gap-1 active:bg-[#EDE7DA] transition-colors"
+            /* ── 写真なし: label 全体がタップ領域 ──────── */
+            <PhotoInput
+              onFile={handleFile}
+              className="w-full h-full flex flex-col items-center justify-center bg-[#F0EBE0] text-[#C4B8A8] gap-1 active:bg-[#EDE7DA] transition-colors"
               style={{ minHeight: '84px' }}
-              aria-label="写真を追加"
             >
               <CameraIcon size={20} />
-              <span className="text-[8px] tracking-widest uppercase">追加</span>
-            </button>
+              <span style={{ fontSize: '8px', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+                追加
+              </span>
+            </PhotoInput>
           )}
 
           {/* アップロード中スピナー */}
           {showSpinner && (
-            <div className="absolute inset-0 bg-[#2C1A0E]/40 flex items-center justify-center">
+            <div className="absolute inset-0 bg-[#2C1A0E]/40 flex items-center justify-center pointer-events-none">
               <div
                 className="w-5 h-5 border-2 rounded-full animate-spin"
-                style={{ borderColor: 'rgba(244,239,230,0.35)', borderTopColor: '#F4EFE6' }}
+                style={{ borderColor: 'rgba(244,239,230,0.3)', borderTopColor: '#F4EFE6' }}
               />
             </div>
           )}
@@ -167,21 +196,9 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
           >
             {totalStock}
           </div>
-
-          {/* ファイル入力
-              accept="image/*" のみ（capture なし）→ iOS で
-              「写真を撮る」「フォトライブラリ」「ファイルを選択」の
-              3択シートが出る */}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            className="hidden"
-          />
         </div>
 
-        {/* ── 商品情報エリア ────────────────────────────────────── */}
+        {/* ── 商品情報エリア ──────────────────────────────────────── */}
         <div className="flex-1 px-3 py-3 min-w-0">
           <div className="flex items-start justify-between gap-1 mb-2">
             <div className="min-w-0">
@@ -199,7 +216,10 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
                   </span>
                 )}
                 {product.size && (
-                  <span className="text-[10px] text-[#7A6858] bg-[#EDE7DA] px-1.5 py-0.5 tracking-wide font-medium" style={{ borderRadius: '1px' }}>
+                  <span
+                    className="text-[10px] text-[#7A6858] bg-[#EDE7DA] px-1.5 py-0.5 tracking-wide font-medium"
+                    style={{ borderRadius: '1px' }}
+                  >
                     {product.size}
                   </span>
                 )}
@@ -223,7 +243,6 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
             </button>
           </div>
 
-          {/* 在庫コントロール */}
           <div className="flex gap-4">
             <StockControl
               label="店舗"
@@ -239,7 +258,7 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
         </div>
       </div>
 
-      {/* 詳細展開パネル（写真ありのとき: 写真タップで開閉） */}
+      {/* 詳細展開パネル */}
       {expanded && (
         <div className="border-t border-[#EDE7DA] px-4 py-3 bg-[#F4EFE6]">
           <div className="grid grid-cols-2 gap-3">

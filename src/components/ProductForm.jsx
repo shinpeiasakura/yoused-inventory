@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 
 function compressImage(file, maxSize = 900, quality = 0.82) {
   return new Promise((resolve) => {
@@ -112,7 +112,6 @@ function SizeRow({ row, onChange, onDelete, canDelete, index }) {
 // ── メインフォーム ─────────────────────────────────────────────────────────────
 export default function ProductForm({ product, category, colors, onSave, onCancel, onAddColor }) {
   const isEditing = !!product
-  const fileRef = useRef(null)
 
   // 共通フィールド（名前・色・写真・日付・価格・メモ）
   const [form, setForm] = useState({
@@ -142,8 +141,9 @@ export default function ProductForm({ product, category, colors, onSave, onCance
   const set = (key, value) => setForm(f => ({ ...f, [key]: value }))
 
   const handlePhotoChange = async (e) => {
-    const file = e.target.files[0]
+    const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
     setPhotoLoading(true)
     try {
       const compressed = await compressImage(file)
@@ -215,26 +215,26 @@ export default function ProductForm({ product, category, colors, onSave, onCance
         </span>
       </div>
 
-      {/* Photo */}
+      {/* Photo
+          iOS Safari 対応: button + programmatic .click() は動かないため
+          label で input を直接ラップし、ユーザーのタップが input に届くようにする */}
       <div>
-        <label className={LABEL_CLS}>写真</label>
-        <button
-          type="button"
-          onClick={() => fileRef.current.click()}
-          className="w-full h-44 overflow-hidden border border-dashed border-[#DDD5C5] bg-[#F4EFE6] flex items-center justify-center active:opacity-80 transition-opacity relative"
-          style={{ borderRadius: '2px' }}
+        <p className={LABEL_CLS}>写真</p>
+        <label
+          className="w-full h-44 overflow-hidden border border-dashed border-[#DDD5C5] bg-[#F4EFE6] flex items-center justify-center active:opacity-80 transition-opacity"
+          style={{ borderRadius: '2px', position: 'relative', cursor: 'pointer', display: 'flex' }}
         >
           {photoLoading ? (
             <div className="text-[#A8998A] text-sm tracking-wide">読み込み中...</div>
           ) : form.photo ? (
             <>
-              <img src={form.photo} alt="product" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-[#2C1A0E]/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+              <img src={form.photo} alt="product" className="w-full h-full object-cover" style={{ position: 'absolute', inset: 0 }} />
+              <div className="absolute inset-0 bg-[#2C1A0E]/20 flex items-center justify-center">
                 <span className="text-[#F4EFE6] text-xs font-medium bg-[#2C1A0E]/60 px-3 py-1 tracking-widest uppercase" style={{ borderRadius: '1px' }}>変更</span>
               </div>
             </>
           ) : (
-            <div className="text-center text-[#C4B8A8]">
+            <div className="text-center text-[#C4B8A8] pointer-events-none">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className="mx-auto mb-2">
                 <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
                 <circle cx="12" cy="13" r="4"/>
@@ -243,8 +243,23 @@ export default function ProductForm({ product, category, colors, onSave, onCance
               <p className="text-[10px] mt-0.5 text-[#D4C9B8] tracking-wide">カメラまたはライブラリ</p>
             </div>
           )}
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
+          {/* opacity:0 で透明にしつつ inset:0 でタップ領域を label 全体に広げる
+              display:none / visibility:hidden は iOS で機能しないため使わない */}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              opacity: 0,
+              width: '100%',
+              height: '100%',
+              cursor: 'pointer',
+              fontSize: 0,
+            }}
+          />
+        </label>
       </div>
 
       {/* Name */}
