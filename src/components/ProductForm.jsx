@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ALERT_LEVELS, ALERT_CONFIG, calcAlert } from '../constants'
 
 function compressImage(file, maxSize = 900, quality = 0.82) {
   return new Promise((resolve) => {
@@ -42,34 +43,157 @@ function InlineStock({ label, value, onChange }) {
   )
 }
 
+// ── アラートセレクター ─────────────────────────────────────────────────────────
+function AlertSelector({ value, onChange }) {
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {ALERT_LEVELS.map(level => (
+        <button
+          key={level.value}
+          type="button"
+          onClick={() => onChange(level.value)}
+          className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium border transition-all"
+          style={{
+            borderRadius: '2px',
+            backgroundColor: value === level.value ? level.bg : 'transparent',
+            color:           value === level.value ? level.text : '#A8998A',
+            borderColor:     value === level.value ? level.dot  : '#DDD5C5',
+          }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: value === level.value ? level.dot : '#C4B8A8' }} />
+          {level.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ── 1サイズ行 ─────────────────────────────────────────────────────────────────
 function SizeRow({ row, onChange, onDelete, canDelete }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const updateStock = (field, v) => {
+    const next = { ...row, [field]: v }
+    // 手動オーバーライドしていなければアラートを自動更新
+    if (!next._alertManual) {
+      next.alert = calcAlert(next.storeStock, next.stock501)
+    }
+    onChange(next)
+  }
+
+  const updateAlert = (val) => {
+    onChange({ ...row, alert: val, _alertManual: true })
+  }
+
+  const alertCfg = ALERT_CONFIG[row.alert] ?? ALERT_CONFIG['ok']
+
   return (
-    <div className="p-3 bg-[#F4EFE6] border border-[#DDD5C5] flex items-center gap-3" style={{ borderRadius: '2px' }}>
-      <div className="flex-shrink-0">
-        <div className="text-[9px] text-[#A8998A] tracking-widest uppercase mb-1">SIZE</div>
-        <input
-          type="text"
-          value={row.size}
-          onChange={e => onChange({ ...row, size: e.target.value })}
-          placeholder="M"
-          className="w-16 px-2 py-1.5 border border-[#DDD5C5] text-sm font-medium bg-[#FDFAF5] text-[#2C1A0E] text-center focus:outline-none focus:border-[#8B5E3C] placeholder:text-[#C4B8A8]"
-          style={{ borderRadius: '2px' }}
-        />
+    <div className="bg-[#F4EFE6] border border-[#DDD5C5]" style={{ borderRadius: '2px' }}>
+      {/* メイン行 */}
+      <div className="p-3 flex items-center gap-3">
+        {/* サイズ入力 */}
+        <div className="flex-shrink-0">
+          <div className="text-[9px] text-[#A8998A] tracking-widest uppercase mb-1">SIZE</div>
+          <input
+            type="text"
+            value={row.size}
+            onChange={e => onChange({ ...row, size: e.target.value })}
+            placeholder="M"
+            className="w-16 px-2 py-1.5 border border-[#DDD5C5] text-sm font-medium bg-[#FDFAF5] text-[#2C1A0E] text-center focus:outline-none focus:border-[#8B5E3C] placeholder:text-[#C4B8A8]"
+            style={{ borderRadius: '2px' }}
+          />
+        </div>
+
+        {/* 在庫 */}
+        <div className="flex flex-1 justify-around gap-2">
+          <InlineStock label="店舗" value={row.storeStock} onChange={v => updateStock('storeStock', v)} />
+          <InlineStock label="501"  value={row.stock501}   onChange={v => updateStock('stock501',   v)} />
+        </div>
+
+        {/* 詳細展開ボタン */}
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-[#A8998A] transition-transform"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          aria-label="詳細を展開"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+
+        {/* 削除ボタン */}
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={!canDelete}
+          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center text-lg transition-colors ${
+            canDelete ? 'text-[#C4B8A8] hover:text-red-400 active:text-red-500' : 'text-[#EDE7DA] cursor-default'
+          }`}
+          aria-label="このサイズを削除"
+        >×</button>
       </div>
-      <div className="flex flex-1 justify-around gap-2">
-        <InlineStock label="店舗" value={row.storeStock} onChange={v => onChange({ ...row, storeStock: v })} />
-        <InlineStock label="501"  value={row.stock501}   onChange={v => onChange({ ...row, stock501:   v })} />
+
+      {/* アラートバッジ（常時表示） */}
+      <div className="px-3 pb-2 flex items-center gap-2">
+        <span className="text-[9px] text-[#A8998A] tracking-widest uppercase flex-shrink-0">ALERT</span>
+        <AlertSelector value={row.alert} onChange={updateAlert} />
       </div>
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={!canDelete}
-        className={`flex-shrink-0 w-7 h-7 flex items-center justify-center text-lg transition-colors ${
-          canDelete ? 'text-[#C4B8A8] hover:text-red-400 active:text-red-500' : 'text-[#EDE7DA] cursor-default'
-        }`}
-        aria-label="このサイズを削除"
-      >×</button>
+
+      {/* 詳細展開パネル（入荷日・販売日・価格・メモ） */}
+      {expanded && (
+        <div className="border-t border-[#DDD5C5] p-3 space-y-3 bg-[#FDFAF5]">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-[9px] text-[#A8998A] mb-1 tracking-widest uppercase">入荷日</p>
+              <input
+                type="date"
+                value={row.arrivalDate}
+                onChange={e => onChange({ ...row, arrivalDate: e.target.value })}
+                className="w-full px-2 py-2 border border-[#DDD5C5] text-xs bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C]"
+                style={{ borderRadius: '2px' }}
+              />
+            </div>
+            <div>
+              <p className="text-[9px] text-[#A8998A] mb-1 tracking-widest uppercase">販売日</p>
+              <input
+                type="date"
+                value={row.saleDate}
+                onChange={e => onChange({ ...row, saleDate: e.target.value })}
+                className="w-full px-2 py-2 border border-[#DDD5C5] text-xs bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C]"
+                style={{ borderRadius: '2px' }}
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-[9px] text-[#A8998A] mb-1 tracking-widest uppercase">価格</p>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A8998A] text-sm">¥</span>
+              <input
+                type="number"
+                min="0"
+                value={row.price ?? ''}
+                onChange={e => onChange({ ...row, price: e.target.value === '' ? null : e.target.value })}
+                placeholder="0"
+                className="w-full pl-7 pr-3 py-2 border border-[#DDD5C5] text-sm bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C] placeholder:text-[#C4B8A8]"
+                style={{ borderRadius: '2px' }}
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-[9px] text-[#A8998A] mb-1 tracking-widest uppercase">メモ</p>
+            <textarea
+              value={row.notes}
+              onChange={e => onChange({ ...row, notes: e.target.value })}
+              rows={2}
+              placeholder="備考・状態など"
+              className="w-full px-3 py-2 border border-[#DDD5C5] text-sm bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C] placeholder:text-[#C4B8A8] resize-none"
+              style={{ borderRadius: '2px' }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -84,29 +208,34 @@ export default function ProductForm({ product, groupProducts = [], category, col
 
   // ── 共通フィールド ────────────────────────────────────────────────────────
   const [form, setForm] = useState({
-    name:        product?.name        ?? '',
-    colorId:     product?.colorId     ?? (colors[0]?.id ?? ''),
-    arrivalDate: product?.arrivalDate ?? '',
-    saleDate:    product?.saleDate    ?? '',
-    price:       product?.price       ?? '',
-    notes:       product?.notes       ?? '',
-    photo:       product?.photo       ?? null,   // 追加モードのみ使用
+    name:    product?.name    ?? '',
+    colorId: product?.colorId ?? (colors[0]?.id ?? ''),
+    photo:   product?.photo   ?? null,   // 追加モードのみ使用
   })
 
   // ── サイズ行（追加 & 編集 共通）──────────────────────────────────────────
   const [sizeRows, setSizeRows] = useState(() => {
     if (isEditing && groupProducts.length > 0) {
-      // 編集: グループ内の全サイズを一覧表示
       return groupProducts.map(p => ({
-        _key:       p.id,
-        id:         p.id,    // 既存商品の id（保存時に使用）
-        size:       p.size,
-        storeStock: p.storeStock,
-        stock501:   p.stock501,
+        _key:         p.id,
+        id:           p.id,
+        size:         p.size,
+        storeStock:   p.storeStock,
+        stock501:     p.stock501,
+        alert:        p.alert ?? calcAlert(p.storeStock, p.stock501),
+        _alertManual: p.alert != null,
+        arrivalDate:  p.arrivalDate ?? '',
+        saleDate:     p.saleDate    ?? '',
+        price:        p.price       ?? null,
+        notes:        p.notes       ?? '',
       }))
     }
-    // 追加: 空の行1つ
-    return [{ _key: crypto.randomUUID(), size: '', storeStock: 0, stock501: 0 }]
+    return [{
+      _key: crypto.randomUUID(),
+      size: '', storeStock: 0, stock501: 0,
+      alert: 'ok', _alertManual: false,
+      arrivalDate: '', saleDate: '', price: null, notes: '',
+    }]
   })
   const [deletedIds, setDeletedIds] = useState([])
 
@@ -151,33 +280,34 @@ export default function ProductForm({ product, groupProducts = [], category, col
   }
 
   const addSizeRow = () =>
-    setSizeRows(prev => [...prev, { _key: crypto.randomUUID(), size: '', storeStock: 0, stock501: 0 }])
+    setSizeRows(prev => [...prev, {
+      _key: crypto.randomUUID(),
+      size: '', storeStock: 0, stock501: 0,
+      alert: 'ok', _alertManual: false,
+      arrivalDate: '', saleDate: '', price: null, notes: '',
+    }])
 
   // ── 送信 ──────────────────────────────────────────────────────────────────
   const handleSubmit = (e) => {
     e.preventDefault()
 
-    const shared = {
-      name:        form.name,
-      colorId:     form.colorId,
-      arrivalDate: form.arrivalDate,
-      saleDate:    form.saleDate,
-      price:       form.price !== '' ? Number(form.price) : null,
-      notes:       form.notes,
-    }
-
     const mappedRows = sizeRows.map(r => ({
-      id:         r.id,   // 既存は id あり、新規は undefined
-      size:       r.size,
-      storeStock: Math.max(0, r.storeStock),
-      stock501:   Math.max(0, r.stock501),
+      id:          r.id,
+      size:        r.size,
+      storeStock:  Math.max(0, r.storeStock),
+      stock501:    Math.max(0, r.stock501),
+      alert:       r.alert,
+      arrivalDate: r.arrivalDate,
+      saleDate:    r.saleDate,
+      price:       r.price !== '' && r.price != null ? Number(r.price) : null,
+      notes:       r.notes,
     }))
 
+    const shared = { name: form.name, colorId: form.colorId }
+
     if (isEditing) {
-      // グループ編集: 既存更新 + 新規追加 + 削除
       onSave({ _isGroupEdit: true, shared, sizeRows: mappedRows, deletedIds })
     } else {
-      // 一括追加: 各サイズを個別商品として登録
       onSave({ ...shared, photo: form.photo, sizes: mappedRows })
     }
   }
@@ -318,38 +448,6 @@ export default function ProductForm({ product, groupProducts = [], category, col
         >
           + サイズを追加
         </button>
-      </div>
-
-      {/* 日付 */}
-      <div>
-        <label className={LABEL_CLS}>日付</label>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-[10px] text-[#A8998A] mb-1.5 tracking-wide">入荷日</p>
-            <input type="date" value={form.arrivalDate} onChange={e => set('arrivalDate', e.target.value)} className={INPUT_CLS} style={{ borderRadius: '2px' }} />
-          </div>
-          <div>
-            <p className="text-[10px] text-[#A8998A] mb-1.5 tracking-wide">販売日</p>
-            <input type="date" value={form.saleDate} onChange={e => set('saleDate', e.target.value)} className={INPUT_CLS} style={{ borderRadius: '2px' }} />
-          </div>
-        </div>
-      </div>
-
-      {/* 価格 */}
-      <div>
-        <label className={LABEL_CLS}>価格</label>
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A8998A] text-sm">¥</span>
-          <input type="number" min="0" value={form.price} onChange={e => set('price', e.target.value)} placeholder="0"
-            className={INPUT_CLS + ' pl-8'} style={{ borderRadius: '2px' }} />
-        </div>
-      </div>
-
-      {/* メモ */}
-      <div>
-        <label className={LABEL_CLS}>メモ</label>
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
-          placeholder="備考・状態など" className={INPUT_CLS + ' resize-none'} style={{ borderRadius: '2px' }} />
       </div>
 
       {/* ボタン */}

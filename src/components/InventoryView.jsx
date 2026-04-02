@@ -64,9 +64,14 @@ export default function InventoryView({
       sizeRows.forEach(s => {
         const productData = {
           ...shared,
-          size:       s.size,
-          storeStock: s.storeStock,
-          stock501:   s.stock501,
+          size:        s.size,
+          storeStock:  s.storeStock,
+          stock501:    s.stock501,
+          alert:       s.alert,
+          arrivalDate: s.arrivalDate,
+          saleDate:    s.saleDate,
+          price:       s.price,
+          notes:       s.notes,
           category,
         }
         if (s.id) {

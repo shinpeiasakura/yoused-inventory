@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { ALERT_CONFIG, calcAlert } from '../constants'
 
 function compressImage(file, maxSize = 900, quality = 0.82) {
   return new Promise((resolve) => {
@@ -136,6 +137,8 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
 
   // ── 写真 ────────────────────────────────────────────────────────────────────
   const totalStock = (product.storeStock || 0) + (product.stock501 || 0)
+  const alertKey = product.alert ?? calcAlert(product.storeStock, product.stock501)
+  const alertCfg = ALERT_CONFIG[alertKey] ?? ALERT_CONFIG['ok']
   const imgSrc = product.photoUrl || product.photo
   const uploadingToStorage = !!product.photo && !product.photoUrl
   const showSpinner = compressing || uploadingToStorage
@@ -256,6 +259,13 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
                       {product.size}
                     </span>
                   )}
+                  <span
+                    className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5"
+                    style={{ borderRadius: '2px', backgroundColor: alertCfg.bg, color: alertCfg.text }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: alertCfg.dot }} />
+                    {alertCfg.label}
+                  </span>
                   {product.price ? (
                     <span className="text-[10px] text-[#8B5E3C] font-medium">¥{Number(product.price).toLocaleString()}</span>
                   ) : null}

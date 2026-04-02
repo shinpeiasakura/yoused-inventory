@@ -8,6 +8,7 @@
  */
 
 import { supabase } from './supabase'
+import { calcAlert } from '../constants'
 import { DEFAULT_COLORS } from '../constants'
 
 const CACHE_KEY  = 'yoused_cache_v2'
@@ -219,6 +220,7 @@ function productToRow(p) {
     sale_date:    p.saleDate     ?? '',
     price:        p.price        ?? null,
     notes:        p.notes        ?? '',
+    alert:        p.alert        ?? 'ok',
     updated_at:   new Date().toISOString(),
   }
   // photo_url は実際の URL がある場合のみ送る
@@ -241,6 +243,7 @@ export function parseProductRow(row) {
     saleDate:    row.sale_date    ?? '',
     price:       row.price        ?? null,
     notes:       row.notes        ?? '',
+    alert:       row.alert        ?? calcAlert(row.store_stock ?? 0, row.stock_501 ?? 0),
     photo:       null,
     photoUrl:    row.photo_url    ?? null,
   }

@@ -43,3 +43,18 @@ export function getInitialData() {
 }
 
 export const STORAGE_KEY = 'yoused_inventory_v1'
+
+export const ALERT_LEVELS = [
+  { value: 'ok',   label: '在庫あり', bg: '#EEF5EE', text: '#2D5A2D', dot: '#5B8C5A' },
+  { value: 'want', label: '追加希望', bg: '#FDF3EA', text: '#6B3A1F', dot: '#C17F55' },
+  { value: 'out',  label: '在庫切れ', bg: '#FDE8E8', text: '#7A1F1F', dot: '#C0392B' },
+]
+
+export const ALERT_CONFIG = Object.fromEntries(ALERT_LEVELS.map(a => [a.value, a]))
+
+export function calcAlert(storeStock, stock501) {
+  const total = (Number(storeStock) || 0) + (Number(stock501) || 0)
+  if (total === 0) return 'out'
+  if (total <= 2)  return 'want'
+  return 'ok'
+}
