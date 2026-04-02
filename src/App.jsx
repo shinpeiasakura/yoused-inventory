@@ -18,6 +18,23 @@ import { subscribeToRealtime } from './lib/realtime'
 
 function genId() { return crypto.randomUUID() }
 
+function SyncBadge({ color, pulse, label, detail }) {
+  return (
+    <span
+      className="flex items-center gap-1.5"
+      title={detail ? `${label}: ${detail}` : label}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${pulse ? 'animate-pulse' : ''}`}
+        style={{ backgroundColor: color }}
+      />
+      <span className="text-[10px] font-medium tracking-wide" style={{ color }}>
+        {label}
+      </span>
+    </span>
+  )
+}
+
 function getInitialData() {
   return {
     products:  [],
@@ -32,10 +49,12 @@ function dbSync(promise) {
 }
 
 export default function App() {
-  const [activeTab,      setActiveTab]      = useState(CATEGORIES[0])
-  const [data,           setData]           = useState(() => mergeTempPhotos(loadCache() ?? getInitialData()))
-  const [syncStatus,     setSyncStatus]     = useState('idle')
-  const [realtimeStatus, setRealtimeStatus] = useState('connecting')
+  const [activeTab,       setActiveTab]       = useState(CATEGORIES[0])
+  const [data,            setData]            = useState(() => mergeTempPhotos(loadCache() ?? getInitialData()))
+  const [syncStatus,      setSyncStatus]      = useState('idle')
+  const [realtimeStatus,  setRealtimeStatus]  = useState('connecting')
+  const [realtimeDetail,  setRealtimeDetail]  = useState('')
+  const [lastSyncedAt,    setLastSyncedAt]    = useState(null)
 
   const dataRef  = useRef(data)
   dataRef.current = data
@@ -58,8 +77,32 @@ export default function App() {
   }, [])
 
   // ── Realtime 購読 ────────────────────────────────────────────────────────────
+  const handleRealtimeStatus = useCallback((status, detail) => {
+    setRealtimeStatus(status)
+    setRealtimeDetail(detail ?? '')
+    if (status === 'connected') setLastSyncedAt(new Date())
+  }, [])
+
+  const handleReconnect = useCallback(async () => {
+    // 再接続後に最新データを取得（切断中の変更を反映）
+    try {
+      const remote = await loadFromSupabase()
+      setData(prev => mergeTempPhotos({
+        ...remote,
+        products: remote.products.map(rp => {
+          const local = prev.products.find(lp => lp.id === rp.id)
+          return local?.photo ? { ...rp, photo: local.photo } : rp
+        }),
+      }))
+      setLastSyncedAt(new Date())
+    } catch (e) {
+      console.error('[YOUSED] reconnect reload failed:', e.message)
+    }
+  }, [])
+
   useEffect(() => {
     return subscribeToRealtime((table, { eventType, new: newRow, old: oldRow }) => {
+      setLastSyncedAt(new Date())
       setData(prev => {
 
         if (table === 'products') {
@@ -139,8 +182,8 @@ export default function App() {
 
         return prev
       })
-    }, setRealtimeStatus)
-  }, [])
+    }, handleRealtimeStatus, handleReconnect)
+  }, [handleRealtimeStatus, handleReconnect])
 
   // 起動時に Supabase からロード
   useEffect(() => {
@@ -316,26 +359,26 @@ export default function App() {
         <header className="bg-[#2C1A0E] safe-top">
           <div className="px-4 pt-3 pb-2.5 flex items-center justify-between">
             <img src="/logo.png" alt="YOUSED" className="h-8 w-auto object-contain" />
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <span className="text-[#A8998A] text-[11px] tracking-widest font-light">
                 {data.products.length} items
               </span>
-              {/* DB ロード状態 */}
+
+              {/* 同期ステータスバッジ */}
               {syncStatus === 'loading' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#C17F55] animate-pulse" title="読込中..." />
+                <SyncBadge color="#C17F55" pulse label="読込中" />
               )}
               {syncStatus === 'error' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="接続エラー" />
+                <SyncBadge color="#C0392B" label="DB接続エラー" />
               )}
-              {/* Realtime 状態 */}
               {syncStatus === 'ok' && realtimeStatus === 'connected' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#8B9E6A]" title="リアルタイム同期中" />
+                <SyncBadge color="#5B8C5A" label="同期中" />
               )}
               {syncStatus === 'ok' && realtimeStatus === 'connecting' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#C17F55] animate-pulse" title="接続中..." />
+                <SyncBadge color="#C17F55" pulse label="接続中..." />
               )}
               {syncStatus === 'ok' && realtimeStatus === 'error' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#C17F55] animate-pulse" title="再接続中..." />
+                <SyncBadge color="#C0392B" pulse label="再接続中" detail={realtimeDetail} />
               )}
             </div>
           </div>
