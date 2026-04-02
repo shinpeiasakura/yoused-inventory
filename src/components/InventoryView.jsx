@@ -45,9 +45,14 @@ export default function InventoryView({
 
   const handleSave = (data) => {
     if (editingProduct) {
+      // 編集: 単一商品を更新
       onUpdateProduct(editingProduct.id, data)
     } else {
-      onAddProduct({ ...data, category })
+      // 追加: sizes 配列からサイズごとに商品を個別登録
+      const { sizes, ...shared } = data
+      sizes.forEach(sizeData => {
+        onAddProduct({ ...shared, ...sizeData, category })
+      })
     }
     closeForm()
   }

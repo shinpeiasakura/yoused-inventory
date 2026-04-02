@@ -32,20 +32,108 @@ const LABEL_CLS = 'block text-[9px] font-semibold text-[#A8998A] mb-2 tracking-w
 const INPUT_CLS =
   'w-full px-4 py-3 border border-[#DDD5C5] text-sm bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C] focus:ring-1 focus:ring-[#8B5E3C]/20 placeholder:text-[#C4B8A8] transition-colors'
 
+// ── サイズ行の在庫コントロール ──────────────────────────────────────────────────
+function InlineStock({ label, value, onChange }) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[9px] text-[#A8998A] tracking-widest uppercase">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(0, value - 1))}
+          className="w-7 h-7 flex items-center justify-center text-[#7A6858] text-base leading-none bg-[#EDE7DA] active:bg-[#DDD5C5]"
+          style={{ borderRadius: '2px' }}
+        >
+          −
+        </button>
+        <span className="w-6 text-center text-sm font-bold text-[#2C1A0E] tabular-nums select-none">{value}</span>
+        <button
+          type="button"
+          onClick={() => onChange(value + 1)}
+          className="w-7 h-7 flex items-center justify-center text-[#F4EFE6] text-base leading-none bg-[#2C1A0E] active:bg-[#4a2e1a]"
+          style={{ borderRadius: '2px' }}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── 1サイズ行（追加モード用）─────────────────────────────────────────────────
+function SizeRow({ row, onChange, onDelete, canDelete, index }) {
+  return (
+    <div className="p-3 bg-[#F4EFE6] border border-[#DDD5C5] flex items-center gap-3" style={{ borderRadius: '2px' }}>
+      {/* サイズ入力 */}
+      <div className="flex-shrink-0">
+        <div className="text-[9px] text-[#A8998A] tracking-widest uppercase mb-1">SIZE</div>
+        <input
+          type="text"
+          value={row.size}
+          onChange={e => onChange({ ...row, size: e.target.value })}
+          placeholder="M"
+          className="w-16 px-2 py-1.5 border border-[#DDD5C5] text-sm font-medium bg-[#FDFAF5] text-[#2C1A0E] text-center focus:outline-none focus:border-[#8B5E3C] placeholder:text-[#C4B8A8]"
+          style={{ borderRadius: '2px' }}
+        />
+      </div>
+
+      {/* 在庫コントロール */}
+      <div className="flex flex-1 justify-around gap-2">
+        <InlineStock
+          label="店舗"
+          value={row.storeStock}
+          onChange={v => onChange({ ...row, storeStock: v })}
+        />
+        <InlineStock
+          label="501"
+          value={row.stock501}
+          onChange={v => onChange({ ...row, stock501: v })}
+        />
+      </div>
+
+      {/* 削除ボタン */}
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={!canDelete}
+        className={`flex-shrink-0 w-7 h-7 flex items-center justify-center text-lg transition-colors ${
+          canDelete
+            ? 'text-[#C4B8A8] hover:text-red-400 active:text-red-500'
+            : 'text-[#EDE7DA] cursor-default'
+        }`}
+        aria-label={`サイズ${index + 1}を削除`}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+// ── メインフォーム ─────────────────────────────────────────────────────────────
 export default function ProductForm({ product, category, colors, onSave, onCancel, onAddColor }) {
+  const isEditing = !!product
   const fileRef = useRef(null)
+
+  // 共通フィールド（名前・色・写真・日付・価格・メモ）
   const [form, setForm] = useState({
     name:        product?.name        ?? '',
     colorId:     product?.colorId     ?? (colors[0]?.id ?? ''),
-    size:        product?.size        ?? '',
-    storeStock:  product?.storeStock  ?? 0,
-    stock501:    product?.stock501    ?? 0,
     arrivalDate: product?.arrivalDate ?? '',
     saleDate:    product?.saleDate    ?? '',
     price:       product?.price       ?? '',
     notes:       product?.notes       ?? '',
     photo:       product?.photo       ?? null,
+    // 編集モードのみ使うシングルフィールド
+    size:        product?.size        ?? '',
+    storeStock:  product?.storeStock  ?? 0,
+    stock501:    product?.stock501    ?? 0,
   })
+
+  // 追加モード専用: 複数サイズ行
+  const [sizes, setSizes] = useState([
+    { _key: crypto.randomUUID(), size: '', storeStock: 0, stock501: 0 },
+  ])
+
   const [addingColor, setAddingColor] = useState(false)
   const [newColorName, setNewColorName] = useState('')
   const [newColorHex, setNewColorHex] = useState('#888888')
@@ -69,31 +157,59 @@ export default function ProductForm({ product, category, colors, onSave, onCance
     const name = newColorName.trim()
     if (!name) return
     const exists = colors.find(c => c.name.toLowerCase() === name.toLowerCase())
-    if (!exists) {
-      onAddColor({ name, hex: newColorHex })
-    }
+    if (!exists) onAddColor({ name, hex: newColorHex })
     setNewColorName('')
     setNewColorHex('#888888')
     setAddingColor(false)
   }
 
+  // サイズ行の操作
+  const updateSize = (key, updated) =>
+    setSizes(prev => prev.map(r => r._key === key ? { ...r, ...updated } : r))
+  const deleteSize = (key) =>
+    setSizes(prev => prev.filter(r => r._key !== key))
+  const addSizeRow = () =>
+    setSizes(prev => [...prev, { _key: crypto.randomUUID(), size: '', storeStock: 0, stock501: 0 }])
+
   const handleSubmit = (e) => {
     e.preventDefault()
-    onSave({
-      ...form,
-      storeStock: Math.max(0, Number(form.storeStock) || 0),
-      stock501:   Math.max(0, Number(form.stock501)   || 0),
-      price:      form.price !== '' ? Number(form.price) : null,
-    })
+
+    const shared = {
+      name:        form.name,
+      colorId:     form.colorId,
+      photo:       form.photo,
+      arrivalDate: form.arrivalDate,
+      saleDate:    form.saleDate,
+      price:       form.price !== '' ? Number(form.price) : null,
+      notes:       form.notes,
+    }
+
+    if (isEditing) {
+      // 編集: 単一商品を更新
+      onSave({
+        ...shared,
+        size:       form.size,
+        storeStock: Math.max(0, Number(form.storeStock) || 0),
+        stock501:   Math.max(0, Number(form.stock501)   || 0),
+      })
+    } else {
+      // 追加: サイズ行ごとに商品を作成
+      onSave({
+        ...shared,
+        sizes: sizes.map(r => ({
+          size:       r.size,
+          storeStock: Math.max(0, r.storeStock),
+          stock501:   Math.max(0, r.stock501),
+        })),
+      })
+    }
   }
 
   return (
     <form onSubmit={handleSubmit} className="px-5 pt-4 pb-8 space-y-5">
       {/* Category badge */}
       <div className="flex items-center justify-between">
-        <p className="text-[9px] text-[#A8998A] tracking-widest uppercase font-medium">
-          Category
-        </p>
+        <p className="text-[9px] text-[#A8998A] tracking-widest uppercase font-medium">Category</p>
         <span className="text-[10px] bg-[#EDE7DA] text-[#7A6858] px-2.5 py-1 tracking-widest uppercase font-medium" style={{ borderRadius: '2px' }}>
           {category}
         </span>
@@ -128,14 +244,7 @@ export default function ProductForm({ product, category, colors, onSave, onCance
             </div>
           )}
         </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handlePhotoChange}
-          className="hidden"
-        />
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
       </div>
 
       {/* Name */}
@@ -145,7 +254,7 @@ export default function ProductForm({ product, category, colors, onSave, onCance
           type="text"
           value={form.name}
           onChange={e => set('name', e.target.value)}
-          placeholder="例: Leather Jacket Type-A"
+          placeholder="例: Leather Drivers JKT"
           className={INPUT_CLS}
           style={{ borderRadius: '2px' }}
         />
@@ -155,24 +264,14 @@ export default function ProductForm({ product, category, colors, onSave, onCance
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className={LABEL_CLS + ' mb-0'}>カラー</label>
-          <button
-            type="button"
-            onClick={() => setAddingColor(v => !v)}
-            className="text-[10px] text-[#8B5E3C] font-medium tracking-wide"
-          >
+          <button type="button" onClick={() => setAddingColor(v => !v)} className="text-[10px] text-[#8B5E3C] font-medium tracking-wide">
             {addingColor ? 'キャンセル' : '+ 新しいカラー'}
           </button>
         </div>
 
         {addingColor && (
           <div className="flex items-center gap-2 mb-3 p-3 bg-[#F4EFE6] border border-[#DDD5C5]" style={{ borderRadius: '2px' }}>
-            <input
-              type="color"
-              value={newColorHex}
-              onChange={e => setNewColorHex(e.target.value)}
-              className="w-9 h-9 cursor-pointer border border-[#DDD5C5] p-0.5 flex-shrink-0"
-              style={{ borderRadius: '2px' }}
-            />
+            <input type="color" value={newColorHex} onChange={e => setNewColorHex(e.target.value)} className="w-9 h-9 cursor-pointer border border-[#DDD5C5] p-0.5 flex-shrink-0" style={{ borderRadius: '2px' }} />
             <input
               type="text"
               value={newColorName}
@@ -183,14 +282,7 @@ export default function ProductForm({ product, category, colors, onSave, onCance
               className="flex-1 px-3 py-2 border border-[#DDD5C5] text-sm bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C] placeholder:text-[#C4B8A8]"
               style={{ borderRadius: '2px' }}
             />
-            <button
-              type="button"
-              onClick={handleAddColor}
-              className="px-3 py-2 bg-[#2C1A0E] text-[#F4EFE6] text-xs font-medium flex-shrink-0 tracking-wide"
-              style={{ borderRadius: '2px' }}
-            >
-              追加
-            </button>
+            <button type="button" onClick={handleAddColor} className="px-3 py-2 bg-[#2C1A0E] text-[#F4EFE6] text-xs font-medium flex-shrink-0 tracking-wide" style={{ borderRadius: '2px' }}>追加</button>
           </div>
         )}
 
@@ -207,57 +299,74 @@ export default function ProductForm({ product, category, colors, onSave, onCance
               }`}
               style={{ borderRadius: '2px' }}
             >
-              <span
-                className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ backgroundColor: color.hex }}
-              />
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color.hex }} />
               {color.name}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Size */}
-      <div>
-        <label className={LABEL_CLS}>サイズ</label>
-        <input
-          type="text"
-          value={form.size}
-          onChange={e => set('size', e.target.value)}
-          placeholder="例: M, L, XL, 34, FREE"
-          className={INPUT_CLS}
-          style={{ borderRadius: '2px' }}
-        />
-      </div>
-
-      {/* Stock */}
-      <div>
-        <label className={LABEL_CLS}>在庫数</label>
-        <div className="grid grid-cols-2 gap-3">
+      {/* ── サイズ・在庫セクション ── */}
+      {isEditing ? (
+        /* 編集モード: 単一サイズ */
+        <div className="space-y-3">
           <div>
-            <p className="text-[10px] text-[#A8998A] mb-1.5 text-center tracking-widest uppercase">店舗</p>
+            <label className={LABEL_CLS}>サイズ</label>
             <input
-              type="number"
-              min="0"
-              value={form.storeStock}
-              onChange={e => set('storeStock', e.target.value)}
-              className={INPUT_CLS + ' text-center text-lg font-bold'}
+              type="text"
+              value={form.size}
+              onChange={e => set('size', e.target.value)}
+              placeholder="例: M, L, XL, 34, FREE"
+              className={INPUT_CLS}
               style={{ borderRadius: '2px' }}
             />
           </div>
           <div>
-            <p className="text-[10px] text-[#A8998A] mb-1.5 text-center tracking-widest uppercase">501</p>
-            <input
-              type="number"
-              min="0"
-              value={form.stock501}
-              onChange={e => set('stock501', e.target.value)}
-              className={INPUT_CLS + ' text-center text-lg font-bold'}
-              style={{ borderRadius: '2px' }}
-            />
+            <label className={LABEL_CLS}>在庫数</label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] text-[#A8998A] mb-1.5 text-center tracking-widest uppercase">店舗</p>
+                <input type="number" min="0" value={form.storeStock} onChange={e => set('storeStock', e.target.value)} className={INPUT_CLS + ' text-center text-lg font-bold'} style={{ borderRadius: '2px' }} />
+              </div>
+              <div>
+                <p className="text-[10px] text-[#A8998A] mb-1.5 text-center tracking-widest uppercase">501</p>
+                <input type="number" min="0" value={form.stock501} onChange={e => set('stock501', e.target.value)} className={INPUT_CLS + ' text-center text-lg font-bold'} style={{ borderRadius: '2px' }} />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* 追加モード: 複数サイズ行 */
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className={LABEL_CLS + ' mb-0'}>サイズ &amp; 在庫</label>
+            <span className="text-[10px] text-[#A8998A]">{sizes.length} サイズ</span>
+          </div>
+
+          <div className="space-y-2">
+            {sizes.map((row, i) => (
+              <SizeRow
+                key={row._key}
+                row={row}
+                index={i}
+                onChange={updated => updateSize(row._key, updated)}
+                onDelete={() => deleteSize(row._key)}
+                canDelete={sizes.length > 1}
+              />
+            ))}
+          </div>
+
+          {/* サイズ追加ボタン */}
+          <button
+            type="button"
+            onClick={addSizeRow}
+            className="mt-2 w-full py-2.5 border border-dashed border-[#8B5E3C] text-[#8B5E3C] text-[11px] font-medium tracking-widest uppercase hover:bg-[#8B5E3C]/5 active:bg-[#8B5E3C]/10 transition-colors"
+            style={{ borderRadius: '2px' }}
+          >
+            + サイズを追加
+          </button>
+        </div>
+      )}
 
       {/* Dates */}
       <div>
@@ -265,23 +374,11 @@ export default function ProductForm({ product, category, colors, onSave, onCance
         <div className="grid grid-cols-2 gap-3">
           <div>
             <p className="text-[10px] text-[#A8998A] mb-1.5 tracking-wide">入荷日</p>
-            <input
-              type="date"
-              value={form.arrivalDate}
-              onChange={e => set('arrivalDate', e.target.value)}
-              className={INPUT_CLS}
-              style={{ borderRadius: '2px' }}
-            />
+            <input type="date" value={form.arrivalDate} onChange={e => set('arrivalDate', e.target.value)} className={INPUT_CLS} style={{ borderRadius: '2px' }} />
           </div>
           <div>
             <p className="text-[10px] text-[#A8998A] mb-1.5 tracking-wide">販売日</p>
-            <input
-              type="date"
-              value={form.saleDate}
-              onChange={e => set('saleDate', e.target.value)}
-              className={INPUT_CLS}
-              style={{ borderRadius: '2px' }}
-            />
+            <input type="date" value={form.saleDate} onChange={e => set('saleDate', e.target.value)} className={INPUT_CLS} style={{ borderRadius: '2px' }} />
           </div>
         </div>
       </div>
@@ -291,47 +388,23 @@ export default function ProductForm({ product, category, colors, onSave, onCance
         <label className={LABEL_CLS}>価格</label>
         <div className="relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A8998A] text-sm">¥</span>
-          <input
-            type="number"
-            min="0"
-            value={form.price}
-            onChange={e => set('price', e.target.value)}
-            placeholder="0"
-            className={INPUT_CLS + ' pl-8'}
-            style={{ borderRadius: '2px' }}
-          />
+          <input type="number" min="0" value={form.price} onChange={e => set('price', e.target.value)} placeholder="0" className={INPUT_CLS + ' pl-8'} style={{ borderRadius: '2px' }} />
         </div>
       </div>
 
       {/* Notes */}
       <div>
         <label className={LABEL_CLS}>メモ</label>
-        <textarea
-          value={form.notes}
-          onChange={e => set('notes', e.target.value)}
-          rows={3}
-          placeholder="備考・状態など"
-          className={INPUT_CLS + ' resize-none'}
-          style={{ borderRadius: '2px' }}
-        />
+        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="備考・状態など" className={INPUT_CLS + ' resize-none'} style={{ borderRadius: '2px' }} />
       </div>
 
       {/* Actions */}
       <div className="flex gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 py-3.5 border border-[#DDD5C5] text-sm font-medium text-[#7A6858] tracking-wide active:bg-[#EDE7DA] transition-colors"
-          style={{ borderRadius: '2px' }}
-        >
+        <button type="button" onClick={onCancel} className="flex-1 py-3.5 border border-[#DDD5C5] text-sm font-medium text-[#7A6858] tracking-wide active:bg-[#EDE7DA] transition-colors" style={{ borderRadius: '2px' }}>
           キャンセル
         </button>
-        <button
-          type="submit"
-          className="flex-1 py-3.5 bg-[#2C1A0E] text-[#F4EFE6] text-sm font-medium tracking-widest active:bg-[#4a2e1a] transition-colors"
-          style={{ borderRadius: '2px' }}
-        >
-          保存する
+        <button type="submit" className="flex-1 py-3.5 bg-[#2C1A0E] text-[#F4EFE6] text-sm font-medium tracking-widest active:bg-[#4a2e1a] transition-colors" style={{ borderRadius: '2px' }}>
+          {isEditing ? '保存する' : `${sizes.length} 点を追加`}
         </button>
       </div>
     </form>
