@@ -220,12 +220,11 @@ function productToRow(p) {
     sale_date:    p.saleDate     ?? '',
     price:        p.price        ?? null,
     notes:        p.notes        ?? '',
-    alert:        p.alert        ?? 'ok',
     updated_at:   new Date().toISOString(),
   }
-  // photo_url は実際の URL がある場合のみ送る
-  // カラムが未作成の場合でも他フィールドの保存が失敗しないようにするため
-  if (p.photoUrl) row.photo_url = p.photoUrl
+  // カラムが未作成でも他フィールドの保存が失敗しないよう、値がある場合のみ送る
+  if (p.photoUrl)         row.photo_url = p.photoUrl
+  if (p.alert != null)    row.alert     = p.alert
   return row
 }
 
