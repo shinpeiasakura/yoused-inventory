@@ -106,6 +106,7 @@ export default function InventoryView({
               onEdit={() => openEdit(product)}
               onDelete={() => handleDelete(product.id)}
               onUpdateStock={(field, value) => onUpdateProduct(product.id, { [field]: value })}
+              onUpdatePhoto={(photo) => onUpdateProduct(product.id, { photo })}
             />
           ))
         )}

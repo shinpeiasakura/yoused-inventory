@@ -1,4 +1,32 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+
+function compressImage(file, maxSize = 900, quality = 0.82) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round((height * maxSize) / width)
+            width = maxSize
+          } else {
+            width = Math.round((width * maxSize) / height)
+            height = maxSize
+          }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.src = ev.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
 
 function StockControl({ label, value, onChange }) {
   return (
@@ -27,47 +55,133 @@ function StockControl({ label, value, onChange }) {
   )
 }
 
-export default function ProductCard({ product, color, onEdit, onDelete, onUpdateStock }) {
-  const [expanded, setExpanded] = useState(false)
+// カメラアイコン SVG
+function CameraIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+      <circle cx="12" cy="13" r="4"/>
+    </svg>
+  )
+}
+
+export default function ProductCard({ product, color, onEdit, onDelete, onUpdateStock, onUpdatePhoto }) {
+  const [expanded, setExpanded]   = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const fileRef = useRef(null)
 
   const totalStock = (product.storeStock || 0) + (product.stock501 || 0)
+  // photoUrl = Storage URL（確定）, photo = base64（アップロード中の一時表示）
   const imgSrc = product.photoUrl || product.photo
+  // base64 があって photoUrl がない = Supabase へのアップロード進行中
+  const uploadingToStorage = !!product.photo && !product.photoUrl
+  const showSpinner = compressing || uploadingToStorage
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // 同じファイルを再選択できるようリセット
+    e.target.value = ''
+    setCompressing(true)
+    try {
+      const base64 = await compressImage(file)
+      onUpdatePhoto(base64)
+    } finally {
+      setCompressing(false)
+    }
+  }
+
+  const openPicker = (e) => {
+    e.stopPropagation()
+    fileRef.current?.click()
+  }
 
   return (
-    <div className="bg-[#FDFAF5] overflow-hidden" style={{ borderRadius: '3px', boxShadow: '0 1px 4px rgba(44,26,14,0.08)' }}>
+    <div
+      className="bg-[#FDFAF5] overflow-hidden"
+      style={{ borderRadius: '3px', boxShadow: '0 1px 4px rgba(44,26,14,0.08)' }}
+    >
       <div className="flex gap-0">
-        {/* Photo */}
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="relative w-[84px] flex-shrink-0"
-        >
+        {/* ── 写真エリア ─────────────────────────────────────────── */}
+        <div className="relative w-[84px] flex-shrink-0" style={{ minHeight: '84px' }}>
+
           {imgSrc ? (
-            <img
-              src={imgSrc}
-              alt={product.name}
-              className="w-full h-full object-cover"
-              style={{ minHeight: '84px' }}
-            />
+            /* 写真あり: タップで詳細展開、カメラアイコンで写真変更 */
+            <>
+              <button
+                onClick={() => setExpanded(v => !v)}
+                className="w-full h-full block"
+                aria-label="詳細を表示"
+              >
+                <img
+                  src={imgSrc}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                  style={{ minHeight: '84px' }}
+                />
+              </button>
+
+              {/* 写真変更ボタン（左下） */}
+              {!showSpinner && (
+                <button
+                  onClick={openPicker}
+                  className="absolute bottom-1.5 left-1.5 w-6 h-6 bg-[#2C1A0E]/65 backdrop-blur-sm flex items-center justify-center text-[#F4EFE6] active:bg-[#2C1A0E]/90 transition-colors"
+                  style={{ borderRadius: '2px' }}
+                  aria-label="写真を変更"
+                >
+                  <CameraIcon size={12} />
+                </button>
+              )}
+            </>
           ) : (
-            <div className="w-full bg-[#F0EBE0] flex flex-col items-center justify-center text-[#C4B8A8] gap-1" style={{ minHeight: '84px' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                <circle cx="12" cy="13" r="4"/>
-              </svg>
-              <span className="text-[8px] tracking-widest uppercase">Photo</span>
+            /* 写真なし: タップでファイルピッカーを開く */
+            <button
+              onClick={openPicker}
+              className="w-full h-full bg-[#F0EBE0] flex flex-col items-center justify-center text-[#C4B8A8] gap-1 active:bg-[#EDE7DA] transition-colors"
+              style={{ minHeight: '84px' }}
+              aria-label="写真を追加"
+            >
+              <CameraIcon size={20} />
+              <span className="text-[8px] tracking-widest uppercase">追加</span>
+            </button>
+          )}
+
+          {/* アップロード中スピナー */}
+          {showSpinner && (
+            <div className="absolute inset-0 bg-[#2C1A0E]/40 flex items-center justify-center">
+              <div
+                className="w-5 h-5 border-2 rounded-full animate-spin"
+                style={{ borderColor: 'rgba(244,239,230,0.35)', borderTopColor: '#F4EFE6' }}
+              />
             </div>
           )}
-          {/* Stock badge */}
-          <div className={`absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[9px] font-bold tracking-wide ${
-            totalStock === 0
-              ? 'bg-red-500/90 text-white'
-              : 'bg-[#2C1A0E]/85 text-[#F4EFE6]'
-          }`} style={{ borderRadius: '1px' }}>
+
+          {/* 在庫バッジ */}
+          <div
+            className={`absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[9px] font-bold tracking-wide pointer-events-none ${
+              totalStock === 0
+                ? 'bg-red-500/90 text-white'
+                : 'bg-[#2C1A0E]/85 text-[#F4EFE6]'
+            }`}
+            style={{ borderRadius: '1px' }}
+          >
             {totalStock}
           </div>
-        </button>
 
-        {/* Content */}
+          {/* ファイル入力
+              accept="image/*" のみ（capture なし）→ iOS で
+              「写真を撮る」「フォトライブラリ」「ファイルを選択」の
+              3択シートが出る */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </div>
+
+        {/* ── 商品情報エリア ────────────────────────────────────── */}
         <div className="flex-1 px-3 py-3 min-w-0">
           <div className="flex items-start justify-between gap-1 mb-2">
             <div className="min-w-0">
@@ -90,13 +204,17 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
                   </span>
                 )}
                 {product.price ? (
-                  <span className="text-[10px] text-[#8B5E3C] font-medium">¥{Number(product.price).toLocaleString()}</span>
+                  <span className="text-[10px] text-[#8B5E3C] font-medium">
+                    ¥{Number(product.price).toLocaleString()}
+                  </span>
                 ) : null}
               </div>
             </div>
+
             <button
               onClick={onEdit}
               className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-[#C4B8A8] hover:text-[#8B5E3C] transition-colors"
+              aria-label="編集"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -105,7 +223,7 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
             </button>
           </div>
 
-          {/* Stock controls */}
+          {/* 在庫コントロール */}
           <div className="flex gap-4">
             <StockControl
               label="店舗"
@@ -121,10 +239,10 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
         </div>
       </div>
 
-      {/* Expanded details */}
+      {/* 詳細展開パネル（写真ありのとき: 写真タップで開閉） */}
       {expanded && (
         <div className="border-t border-[#EDE7DA] px-4 py-3 bg-[#F4EFE6]">
-          <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-[9px] text-[#A8998A] mb-0.5 tracking-widest uppercase">入荷日</p>
               <p className="font-medium text-[#2C1A0E] text-xs">{product.arrivalDate || '—'}</p>
