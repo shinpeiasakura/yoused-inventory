@@ -13,12 +13,13 @@ export default function InventoryView({
   onDeleteProduct,
   onAddColor,
 }) {
-  const [activeColor, setActiveColor] = useState('all')
-  const [showForm, setShowForm] = useState(false)
+  const [activeColor,    setActiveColor]    = useState('all')
+  const [showForm,       setShowForm]       = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
+  const [editingGroup,   setEditingGroup]   = useState([])
 
   const usedColorIds = [...new Set(products.map(p => p.colorId))]
-  const usedColors = colors.filter(c => usedColorIds.includes(c.id))
+  const usedColors   = colors.filter(c => usedColorIds.includes(c.id))
 
   const filtered =
     activeColor === 'all'
@@ -26,34 +27,64 @@ export default function InventoryView({
       : products.filter(p => p.colorId === activeColor)
 
   const storeTotal    = filtered.reduce((s, p) => s + (p.storeStock || 0), 0)
-  const stock501Total = filtered.reduce((s, p) => s + (p.stock501 || 0), 0)
+  const stock501Total = filtered.reduce((s, p) => s + (p.stock501  || 0), 0)
 
   const openAdd = () => {
     setEditingProduct(null)
+    setEditingGroup([])
     setShowForm(true)
   }
 
   const openEdit = (product) => {
+    // 同じ商品名 + カラーの全サイズをグループとして取得
+    const group = products.filter(
+      p => p.name === product.name && p.colorId === product.colorId
+    )
     setEditingProduct(product)
+    setEditingGroup(group)
     setShowForm(true)
   }
 
   const closeForm = () => {
     setShowForm(false)
     setEditingProduct(null)
+    setEditingGroup([])
   }
 
   const handleSave = (data) => {
     if (editingProduct) {
-      // 編集: 単一商品を更新
-      onUpdateProduct(editingProduct.id, data)
+      // ── グループ編集モード ─────────────────────────────────────────────
+      // data = { _isGroupEdit: true, shared, sizeRows, deletedIds }
+      const { shared, sizeRows, deletedIds } = data
+
+      // 削除されたサイズを消す
+      deletedIds.forEach(id => onDeleteProduct(id))
+
+      // 既存サイズを更新、新規サイズを追加
+      sizeRows.forEach(s => {
+        const productData = {
+          ...shared,
+          size:       s.size,
+          storeStock: s.storeStock,
+          stock501:   s.stock501,
+          category,
+        }
+        if (s.id) {
+          onUpdateProduct(s.id, productData)
+        } else {
+          onAddProduct(productData)
+        }
+      })
+
     } else {
-      // 追加: sizes 配列からサイズごとに商品を個別登録
+      // ── 一括追加モード ────────────────────────────────────────────────
+      // data = { ...sharedFields, photo, sizes: [{size, storeStock, stock501}] }
       const { sizes, ...shared } = data
       sizes.forEach(sizeData => {
         onAddProduct({ ...shared, ...sizeData, category })
       })
     }
+
     closeForm()
   }
 
@@ -130,6 +161,7 @@ export default function InventoryView({
         >
           <ProductForm
             product={editingProduct}
+            groupProducts={editingGroup}
             category={category}
             colors={colors}
             onSave={handleSave}
