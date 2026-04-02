@@ -44,8 +44,10 @@ function getInitialData() {
   }
 }
 
-function dbSync(promise) {
-  promise.catch(e => console.error('[YOUSED] sync error:', e.message))
+function dbSync(promise, label = '') {
+  promise
+    .then(() => { if (label) console.log('[YOUSED] synced:', label) })
+    .catch(e => console.error('[YOUSED] sync FAILED', label, ':', e.message))
 }
 
 export default function App() {
@@ -83,22 +85,31 @@ export default function App() {
     if (status === 'connected') setLastSyncedAt(new Date())
   }, [])
 
-  const handleReconnect = useCallback(async () => {
-    // 再接続後に最新データを取得（切断中の変更を反映）
+  // ── DB から全件再取得（ポーリング・再接続・visibilitychange 共通） ──────────
+  const reloadFromDb = useCallback(async (reason) => {
+    console.log('[YOUSED] reloadFromDb:', reason)
     try {
       const remote = await loadFromSupabase()
-      setData(prev => mergeTempPhotos({
-        ...remote,
-        products: remote.products.map(rp => {
-          const local = prev.products.find(lp => lp.id === rp.id)
-          return local?.photo ? { ...rp, photo: local.photo } : rp
-        }),
-      }))
+      setData(prev => {
+        const merged = mergeTempPhotos({
+          ...remote,
+          products: remote.products.map(rp => {
+            const local = prev.products.find(lp => lp.id === rp.id)
+            return local?.photo ? { ...rp, photo: local.photo } : rp
+          }),
+        })
+        return merged
+      })
       setLastSyncedAt(new Date())
+      console.log('[YOUSED] reloadFromDb: done', reason)
     } catch (e) {
-      console.error('[YOUSED] reconnect reload failed:', e.message)
+      console.error('[YOUSED] reloadFromDb failed:', e.message)
     }
   }, [])
+
+  const handleReconnect = useCallback(() => {
+    reloadFromDb('realtime-reconnect')
+  }, [reloadFromDb])
 
   useEffect(() => {
     return subscribeToRealtime((table, { eventType, new: newRow, old: oldRow }) => {
@@ -185,20 +196,23 @@ export default function App() {
     }, handleRealtimeStatus, handleReconnect)
   }, [handleRealtimeStatus, handleReconnect])
 
-  // 起動時に Supabase からロード
+  // ── 起動時に Supabase からロード ────────────────────────────────────────────
   useEffect(() => {
     async function init() {
       setSyncStatus('loading')
       try {
         const remote = await loadFromSupabase()
+        console.log('[YOUSED] init: loaded', remote.products.length, 'products from Supabase')
         const localCache = loadCache()
         if (remote.products.length === 0 && localCache?.products?.length > 0) {
+          console.log('[YOUSED] init: migrating local cache to Supabase')
           await migrateToSupabase(localCache)
           const migrated = await loadFromSupabase()
           setData(mergeTempPhotos(migrated))
         } else {
           setData(mergeTempPhotos(remote))
         }
+        setLastSyncedAt(new Date())
         setSyncStatus('ok')
       } catch (e) {
         console.error('[YOUSED] Supabase load failed:', e.message)
@@ -207,6 +221,26 @@ export default function App() {
     }
     init()
   }, [])
+
+  // ── 30秒ポーリング（リアルタイムの補完） ────────────────────────────────────
+  useEffect(() => {
+    const POLL_INTERVAL = 30_000
+    const id = setInterval(() => {
+      reloadFromDb('poll-30s')
+    }, POLL_INTERVAL)
+    return () => clearInterval(id)
+  }, [reloadFromDb])
+
+  // ── タブが前面に戻ったとき再取得 ───────────────────────────────────────────
+  useEffect(() => {
+    const handle = () => {
+      if (document.visibilityState === 'visible') {
+        reloadFromDb('visibility-visible')
+      }
+    }
+    document.addEventListener('visibilitychange', handle)
+    return () => document.removeEventListener('visibilitychange', handle)
+  }, [reloadFromDb])
 
   // ── Products ────────────────────────────────────────────────────────────────
 
@@ -229,16 +263,16 @@ export default function App() {
               p.id === id ? { ...p, photoUrl, photo: null } : p
             )
             const updated = products.find(p => p.id === id)
-            if (updated) dbSync(syncProduct(updated))
+            if (updated) dbSync(syncProduct(updated), `addProduct(photo) ${id}`)
             return { ...prev, products }
           })
         })
         .catch(e => {
           console.error('[YOUSED] photo upload failed:', e.message)
-          dbSync(syncProduct(newProduct))
+          dbSync(syncProduct(newProduct), `addProduct(no-photo) ${id}`)
         })
     } else {
-      dbSync(syncProduct(newProduct))
+      dbSync(syncProduct(newProduct), `addProduct ${id}`)
     }
   }, [])
 
