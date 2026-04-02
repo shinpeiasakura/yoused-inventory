@@ -138,9 +138,9 @@ export async function loadFromSupabase() {
     supabase.from('equipment').select('*'),
   ])
 
-  if (productsRes.error)  throw new Error(`products: ${productsRes.error.message}`)
-  if (colorsRes.error)    throw new Error(`colors: ${colorsRes.error.message}`)
-  if (equipmentRes.error) throw new Error(`equipment: ${equipmentRes.error.message}`)
+  if (productsRes.error)  { console.error('[YOUSED] loadFromSupabase products error:', productsRes.error); throw new Error(`products: ${productsRes.error.message}`) }
+  if (colorsRes.error)    { console.error('[YOUSED] loadFromSupabase colors error:',   colorsRes.error);   throw new Error(`colors: ${colorsRes.error.message}`) }
+  if (equipmentRes.error) { console.error('[YOUSED] loadFromSupabase equipment error:', equipmentRes.error); throw new Error(`equipment: ${equipmentRes.error.message}`) }
 
   return {
     products:  (productsRes.data || []).map(parseProductRow),
@@ -167,8 +167,14 @@ export async function migrateToSupabase(data) {
 // ── Supabase CRUD ─────────────────────────────────────────────────────────────
 
 export async function syncProduct(product) {
-  const { error } = await supabase.from('products').upsert(productToRow(product))
-  if (error) throw new Error(`syncProduct: ${error.message}`)
+  const row = productToRow(product)
+  console.log('[YOUSED] syncProduct row:', JSON.stringify(row))
+  const { data, error } = await supabase.from('products').upsert(row).select()
+  if (error) {
+    console.error('[YOUSED] syncProduct FAILED — code:', error.code, '| message:', error.message, '| details:', error.details, '| hint:', error.hint)
+    throw new Error(`syncProduct: ${error.message}`)
+  }
+  console.log('[YOUSED] syncProduct OK — saved row id:', data?.[0]?.id)
 }
 
 export async function deleteProductFromDb(id) {
@@ -209,22 +215,23 @@ export async function deleteEquipmentFromDb(id) {
 
 function productToRow(p) {
   const row = {
-    id:           p.id,
-    category:     p.category     ?? '',
-    color_id:     p.colorId      ?? '',
-    name:         p.name         ?? '',
-    size:         p.size         ?? '',
-    store_stock:  p.storeStock   ?? 0,
-    stock_501:    p.stock501     ?? 0,
-    arrival_date: p.arrivalDate  ?? '',
-    sale_date:    p.saleDate     ?? '',
-    price:        p.price        ?? null,
-    notes:        p.notes        ?? '',
+    id:          p.id,
+    category:    p.category  ?? '',
+    color_id:    p.colorId   ?? '',
+    name:        p.name      ?? '',
+    size:        p.size      ?? '',
+    store_stock: p.storeStock ?? 0,
+    stock_501:   p.stock501   ?? 0,
+    // date型カラムには null を送る（空文字列はPostgreSQLのdate型で型エラーになる）
+    arrival_date: p.arrivalDate || null,
+    sale_date:    p.saleDate    || null,
+    price:        p.price != null && p.price !== '' ? Number(p.price) : null,
+    notes:        p.notes    ?? '',
     updated_at:   new Date().toISOString(),
   }
   // カラムが未作成でも他フィールドの保存が失敗しないよう、値がある場合のみ送る
-  if (p.photoUrl)         row.photo_url = p.photoUrl
-  if (p.alert != null)    row.alert     = p.alert
+  if (p.photoUrl)      row.photo_url = p.photoUrl
+  if (p.alert != null) row.alert     = p.alert
   return row
 }
 
