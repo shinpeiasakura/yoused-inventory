@@ -130,27 +130,82 @@ export function mergeTempPhotos(data) {
 
 // ── Supabase（リモート）──────────────────────────────────────────────────────
 
+function logSupabaseError(label, err) {
+  console.error(`[YOUSED] ${label} — message: "${err.message}" | code: ${err.code} | details: ${err.details} | hint: ${err.hint}`)
+}
+
 export async function loadFromSupabase() {
-  const [productsRes, colorsRes, cashRes, equipmentRes] = await Promise.all([
-    supabase.from('products').select('*'),
-    supabase.from('colors').select('*').order('sort_order'),
-    supabase.from('cash_data').select('*').eq('id', 1).maybeSingle(),
-    supabase.from('equipment').select('*'),
-  ])
+  console.log('[YOUSED] loadFromSupabase: start')
+  console.log('[YOUSED] Supabase URL:', supabase.supabaseUrl)
 
-  if (productsRes.error)  { console.error('[YOUSED] loadFromSupabase products error:', productsRes.error); throw new Error(`products: ${productsRes.error.message}`) }
-  if (colorsRes.error)    { console.error('[YOUSED] loadFromSupabase colors error:',   colorsRes.error);   throw new Error(`colors: ${colorsRes.error.message}`) }
-  if (equipmentRes.error) { console.error('[YOUSED] loadFromSupabase equipment error:', equipmentRes.error); throw new Error(`equipment: ${equipmentRes.error.message}`) }
-
-  return {
-    products:  (productsRes.data || []).map(parseProductRow),
-    colors:    colorsRes.data?.length > 0 ? colorsRes.data : DEFAULT_COLORS,
-    cash:      cashRes.data
-                 ? { registerAmount: cashRes.data.register_amount ?? 0,
-                     history: cashRes.data.history ?? [] }
-                 : { registerAmount: 0, history: [] },
-    equipment: equipmentRes.data || [],
+  // ── products ───────────────────────────────────────────────────────────────
+  let products = []
+  try {
+    console.log('[YOUSED] fetching products...')
+    const { data, error } = await supabase.from('products').select('*')
+    if (error) {
+      logSupabaseError('products SELECT error', error)
+      throw new Error(`products: ${error.message}`)
+    }
+    products = (data || []).map(parseProductRow)
+    console.log('[YOUSED] products OK —', products.length, 'rows')
+  } catch (e) {
+    console.error('[YOUSED] products fetch threw:', e)
+    throw e
   }
+
+  // ── colors ─────────────────────────────────────────────────────────────────
+  let colors = DEFAULT_COLORS
+  try {
+    console.log('[YOUSED] fetching colors...')
+    const { data, error } = await supabase.from('colors').select('*').order('sort_order', { nullsFirst: false })
+    if (error) {
+      logSupabaseError('colors SELECT error', error)
+      console.warn('[YOUSED] colors failed — using DEFAULT_COLORS')
+    } else {
+      colors = data?.length > 0 ? data : DEFAULT_COLORS
+      console.log('[YOUSED] colors OK —', colors.length, 'rows')
+    }
+  } catch (e) {
+    console.error('[YOUSED] colors fetch threw:', e, '— using DEFAULT_COLORS')
+  }
+
+  // ── cash_data ──────────────────────────────────────────────────────────────
+  let cash = { registerAmount: 0, history: [] }
+  try {
+    console.log('[YOUSED] fetching cash_data...')
+    const { data, error } = await supabase.from('cash_data').select('*').eq('id', 1).maybeSingle()
+    if (error) {
+      logSupabaseError('cash_data SELECT error', error)
+      console.warn('[YOUSED] cash_data failed — using default')
+    } else if (data) {
+      cash = { registerAmount: data.register_amount ?? 0, history: data.history ?? [] }
+      console.log('[YOUSED] cash_data OK')
+    } else {
+      console.log('[YOUSED] cash_data: no row yet, using default')
+    }
+  } catch (e) {
+    console.error('[YOUSED] cash_data fetch threw:', e, '— using default')
+  }
+
+  // ── equipment ──────────────────────────────────────────────────────────────
+  let equipment = []
+  try {
+    console.log('[YOUSED] fetching equipment...')
+    const { data, error } = await supabase.from('equipment').select('*')
+    if (error) {
+      logSupabaseError('equipment SELECT error', error)
+      console.warn('[YOUSED] equipment failed — using []')
+    } else {
+      equipment = data || []
+      console.log('[YOUSED] equipment OK —', equipment.length, 'rows')
+    }
+  } catch (e) {
+    console.error('[YOUSED] equipment fetch threw:', e, '— using []')
+  }
+
+  console.log('[YOUSED] loadFromSupabase: done')
+  return { products, colors, cash, equipment }
 }
 
 export async function migrateToSupabase(data) {

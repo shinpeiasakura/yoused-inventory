@@ -215,7 +215,7 @@ export default function App() {
         setLastSyncedAt(new Date())
         setSyncStatus('ok')
       } catch (e) {
-        console.error('[YOUSED] Supabase load failed:', e.message)
+        console.error('[YOUSED] Supabase load failed:', e.message, e)
         setSyncStatus('error')
       }
     }
