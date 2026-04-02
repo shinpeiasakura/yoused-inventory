@@ -7,7 +7,7 @@
  *  - localStorage : オフライン時フォールバックキャッシュ + アップロード前の一時写真
  */
 
-import { supabase } from './supabase'
+import { supabase, testRawConnection } from './supabase'
 import { calcAlert } from '../constants'
 import { DEFAULT_COLORS } from '../constants'
 
@@ -137,6 +137,7 @@ function logSupabaseError(label, err) {
 export async function loadFromSupabase() {
   console.log('[YOUSED] loadFromSupabase: start')
   console.log('[YOUSED] Supabase URL:', supabase.supabaseUrl)
+  await testRawConnection()
 
   // ── products ───────────────────────────────────────────────────────────────
   let products = []
