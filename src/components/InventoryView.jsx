@@ -17,6 +17,7 @@ export default function InventoryView({
   const [showForm,       setShowForm]       = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [editingGroup,   setEditingGroup]   = useState([])
+  const [reordering,     setReordering]     = useState(false)
 
   const usedColorIds = [...new Set(products.map(p => p.colorId))]
   const usedColors   = colors.filter(c => usedColorIds.includes(c.id))
@@ -26,18 +27,29 @@ export default function InventoryView({
       ? products
       : products.filter(p => p.colorId === activeColor)
   ).slice().sort((a, b) => {
-    // 1. sort_order 昇順（未設定は 0）
     const so = (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
     if (so !== 0) return so
-    // 2. 商品名 自然順
     const na = (a.name ?? '').localeCompare(b.name ?? '', 'ja', { numeric: true, sensitivity: 'base' })
     if (na !== 0) return na
-    // 3. サイズ 自然順（S/M/L/XL・0/1/2・28/30 どれも正しく並ぶ）
     return (a.size ?? '').localeCompare(b.size ?? '', 'ja', { numeric: true, sensitivity: 'base' })
   })
 
   const storeTotal    = filtered.reduce((s, p) => s + (p.storeStock || 0), 0)
   const stock501Total = filtered.reduce((s, p) => s + (p.stock501  || 0), 0)
+
+  // ── 並び替え ──────────────────────────────────────────────────────────────────
+  const handleMove = (fromIdx, toIdx) => {
+    if (toIdx < 0 || toIdx >= filtered.length) return
+    // 移動後の配列を組み立てて 0,1,2... を振り直す
+    const reordered = [...filtered]
+    const [moved] = reordered.splice(fromIdx, 1)
+    reordered.splice(toIdx, 0, moved)
+    reordered.forEach((p, idx) => {
+      if ((p.sortOrder ?? 0) !== idx) {
+        onUpdateProduct(p.id, { sortOrder: idx })
+      }
+    })
+  }
 
   const openAdd = () => {
     setEditingProduct(null)
@@ -46,7 +58,6 @@ export default function InventoryView({
   }
 
   const openEdit = (product) => {
-    // 同じ商品名 + カラーの全サイズをグループとして取得
     const group = products.filter(
       p => p.name === product.name && p.colorId === product.colorId
     )
@@ -63,14 +74,8 @@ export default function InventoryView({
 
   const handleSave = (data) => {
     if (editingProduct) {
-      // ── グループ編集モード ─────────────────────────────────────────────
-      // data = { _isGroupEdit: true, shared, sizeRows, deletedIds }
       const { shared, sizeRows, deletedIds } = data
-
-      // 削除されたサイズを消す
       deletedIds.forEach(id => onDeleteProduct(id))
-
-      // 既存サイズを更新、新規サイズを追加
       sizeRows.forEach(s => {
         const productData = {
           ...shared,
@@ -90,16 +95,12 @@ export default function InventoryView({
           onAddProduct(productData)
         }
       })
-
     } else {
-      // ── 一括追加モード ────────────────────────────────────────────────
-      // data = { ...sharedFields, photo, sizes: [{size, storeStock, stock501}] }
       const { sizes, ...shared } = data
       sizes.forEach((sizeData, idx) => {
         onAddProduct({ ...shared, ...sizeData, category, sortOrder: idx })
       })
     }
-
     closeForm()
   }
 
@@ -114,7 +115,7 @@ export default function InventoryView({
       <ColorTabs
         usedColors={usedColors}
         activeColor={activeColor}
-        onChange={setActiveColor}
+        onChange={(c) => { setActiveColor(c); setReordering(false) }}
         allColors={colors}
         onAddColor={onAddColor}
       />
@@ -131,7 +132,33 @@ export default function InventoryView({
         <span className="text-[11px] text-[#A8998A]">
           計 <span className="font-semibold text-[#8B5E3C]">{storeTotal + stock501Total}</span>
         </span>
+        {/* 並び替えトグル */}
+        {filtered.length > 1 && (
+          <button
+            onClick={() => setReordering(v => !v)}
+            className={`ml-auto text-[10px] font-medium tracking-widest px-2.5 py-1 border transition-colors ${
+              reordering
+                ? 'bg-[#2C1A0E] text-[#F4EFE6] border-[#2C1A0E]'
+                : 'text-[#A8998A] border-[#DDD5C5] active:bg-[#EDE7DA]'
+            }`}
+            style={{ borderRadius: '2px' }}
+          >
+            {reordering ? '完了' : '並替'}
+          </button>
+        )}
       </div>
+
+      {/* 並び替えモード案内 */}
+      {reordering && (
+        <div className="px-4 py-2 bg-[#F4EFE6] border-b border-[#DDD5C5] flex items-center gap-2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#8B5E3C] flex-shrink-0">
+            <line x1="3" y1="6"  x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          <p className="text-[10px] text-[#8B5E3C] tracking-wide">↑↓ で順番を変更できます。変更は自動保存されます。</p>
+        </div>
+      )}
 
       {/* Product list */}
       <div className="p-3 space-y-2">
@@ -144,7 +171,7 @@ export default function InventoryView({
             <p className="text-[11px] text-[#C4B8A8] tracking-wide">右下の ＋ から追加してください</p>
           </div>
         ) : (
-          filtered.map(product => (
+          filtered.map((product, idx) => (
             <ProductCard
               key={product.id}
               product={product}
@@ -153,20 +180,27 @@ export default function InventoryView({
               onDelete={() => handleDelete(product.id)}
               onUpdateStock={(field, value) => onUpdateProduct(product.id, { [field]: value })}
               onUpdatePhoto={(photo) => onUpdateProduct(product.id, { photo })}
+              isReordering={reordering}
+              isFirst={idx === 0}
+              isLast={idx === filtered.length - 1}
+              onMoveUp={() => handleMove(idx, idx - 1)}
+              onMoveDown={() => handleMove(idx, idx + 1)}
             />
           ))
         )}
       </div>
 
-      {/* FAB */}
-      <button
-        onClick={openAdd}
-        className="fixed right-4 fab-bottom z-30 w-14 h-14 bg-[#2C1A0E] text-[#F4EFE6] shadow-lg flex items-center justify-center text-2xl active:scale-95 transition-transform"
-        style={{ borderRadius: '3px' }}
-        aria-label="商品を追加"
-      >
-        +
-      </button>
+      {/* FAB — 並び替え中は非表示 */}
+      {!reordering && (
+        <button
+          onClick={openAdd}
+          className="fixed right-4 fab-bottom z-30 w-14 h-14 bg-[#2C1A0E] text-[#F4EFE6] shadow-lg flex items-center justify-center text-2xl active:scale-95 transition-transform"
+          style={{ borderRadius: '3px' }}
+          aria-label="商品を追加"
+        >
+          +
+        </button>
+      )}
 
       {/* Product form modal */}
       {showForm && (
