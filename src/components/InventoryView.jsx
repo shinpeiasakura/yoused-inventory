@@ -21,10 +21,20 @@ export default function InventoryView({
   const usedColorIds = [...new Set(products.map(p => p.colorId))]
   const usedColors   = colors.filter(c => usedColorIds.includes(c.id))
 
-  const filtered =
+  const filtered = (
     activeColor === 'all'
       ? products
       : products.filter(p => p.colorId === activeColor)
+  ).slice().sort((a, b) => {
+    // 1. sort_order 昇順（未設定は 0）
+    const so = (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+    if (so !== 0) return so
+    // 2. 商品名 自然順
+    const na = (a.name ?? '').localeCompare(b.name ?? '', 'ja', { numeric: true, sensitivity: 'base' })
+    if (na !== 0) return na
+    // 3. サイズ 自然順（S/M/L/XL・0/1/2・28/30 どれも正しく並ぶ）
+    return (a.size ?? '').localeCompare(b.size ?? '', 'ja', { numeric: true, sensitivity: 'base' })
+  })
 
   const storeTotal    = filtered.reduce((s, p) => s + (p.storeStock || 0), 0)
   const stock501Total = filtered.reduce((s, p) => s + (p.stock501  || 0), 0)
