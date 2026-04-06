@@ -143,7 +143,11 @@ export async function loadFromSupabase() {
   let products = []
   try {
     console.log('[YOUSED] fetching products...')
-    const { data, error } = await supabase.from('products').select('*')
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('updated_at', { ascending: true })
     if (error) {
       logSupabaseError('products SELECT error', error)
       throw new Error(`products: ${error.message}`)
@@ -286,8 +290,9 @@ function productToRow(p) {
     updated_at:   new Date().toISOString(),
   }
   // カラムが未作成でも他フィールドの保存が失敗しないよう、値がある場合のみ送る
-  if (p.photoUrl)      row.photo_url = p.photoUrl
-  if (p.alert != null) row.alert     = p.alert
+  if (p.photoUrl)          row.photo_url  = p.photoUrl
+  if (p.alert != null)     row.alert      = p.alert
+  if (p.sortOrder != null) row.sort_order = p.sortOrder
   return row
 }
 
@@ -306,6 +311,7 @@ export function parseProductRow(row) {
     price:       row.price        ?? null,
     notes:       row.notes        ?? '',
     alert:       row.alert        ?? calcAlert(row.store_stock ?? 0, row.stock_501 ?? 0),
+    sortOrder:   row.sort_order   ?? 0,
     photo:       null,
     photoUrl:    row.photo_url    ?? null,
   }

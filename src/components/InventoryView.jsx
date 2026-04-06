@@ -85,8 +85,8 @@ export default function InventoryView({
       // ── 一括追加モード ────────────────────────────────────────────────
       // data = { ...sharedFields, photo, sizes: [{size, storeStock, stock501}] }
       const { sizes, ...shared } = data
-      sizes.forEach(sizeData => {
-        onAddProduct({ ...shared, ...sizeData, category })
+      sizes.forEach((sizeData, idx) => {
+        onAddProduct({ ...shared, ...sizeData, category, sortOrder: idx })
       })
     }
 
