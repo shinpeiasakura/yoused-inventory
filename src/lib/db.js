@@ -184,7 +184,7 @@ export async function loadFromSupabase() {
       logSupabaseError('cash_data SELECT error', error)
       console.warn('[YOUSED] cash_data failed — using default')
     } else if (data) {
-      cash = { registerAmount: data.register_amount ?? 0, history: data.history ?? [] }
+      cash = { registerAmount: data.register_amount ?? 0, history: data.history ?? [], denominations: data.denominations ?? {} }
       console.log('[YOUSED] cash_data OK')
     } else {
       console.log('[YOUSED] cash_data: no row yet, using default')
@@ -250,12 +250,15 @@ export async function syncColor(color) {
 }
 
 export async function syncCash(cash) {
-  const { error } = await supabase.from('cash_data').upsert({
+  const row = {
     id: 1,
     register_amount: cash.registerAmount ?? 0,
     history: cash.history ?? [],
     updated_at: new Date().toISOString(),
-  })
+  }
+  // denominations カラムが未追加でも失敗しないよう条件付きで送る
+  if (cash.denominations) row.denominations = cash.denominations
+  const { error } = await supabase.from('cash_data').upsert(row)
   if (error) throw new Error(`syncCash: ${error.message}`)
 }
 

@@ -147,23 +147,37 @@ function SizeRow({ row, onChange, onDelete, canDelete }) {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <p className="text-[9px] text-[#A8998A] mb-1 tracking-widest uppercase">入荷日</p>
-              <input
-                type="date"
-                value={row.arrivalDate}
-                onChange={e => onChange({ ...row, arrivalDate: e.target.value })}
-                className="w-full px-2 py-2 border border-[#DDD5C5] text-xs bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C]"
-                style={{ borderRadius: '2px' }}
-              />
+              <div className="flex gap-1">
+                <input
+                  type="date"
+                  value={row.arrivalDate || ''}
+                  onChange={e => onChange({ ...row, arrivalDate: e.target.value })}
+                  className="flex-1 min-w-0 px-2 py-2 border border-[#DDD5C5] text-xs bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C]"
+                  style={{ borderRadius: '2px' }}
+                />
+                {row.arrivalDate && (
+                  <button type="button" onClick={() => onChange({ ...row, arrivalDate: '' })}
+                    className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-[#C4B8A8] hover:text-[#7A6858] text-base"
+                    style={{ borderRadius: '2px' }} aria-label="入荷日をクリア">×</button>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-[9px] text-[#A8998A] mb-1 tracking-widest uppercase">販売日</p>
-              <input
-                type="date"
-                value={row.saleDate}
-                onChange={e => onChange({ ...row, saleDate: e.target.value })}
-                className="w-full px-2 py-2 border border-[#DDD5C5] text-xs bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C]"
-                style={{ borderRadius: '2px' }}
-              />
+              <div className="flex gap-1">
+                <input
+                  type="date"
+                  value={row.saleDate || ''}
+                  onChange={e => onChange({ ...row, saleDate: e.target.value })}
+                  className="flex-1 min-w-0 px-2 py-2 border border-[#DDD5C5] text-xs bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C]"
+                  style={{ borderRadius: '2px' }}
+                />
+                {row.saleDate && (
+                  <button type="button" onClick={() => onChange({ ...row, saleDate: '' })}
+                    className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-[#C4B8A8] hover:text-[#7A6858] text-base"
+                    style={{ borderRadius: '2px' }} aria-label="販売日をクリア">×</button>
+                )}
+              </div>
             </div>
           </div>
           <div>

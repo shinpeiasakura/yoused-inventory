@@ -1,8 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 function genId() {
   return crypto.randomUUID()
 }
+
+const DENOMS = [
+  { value: 10000, label: '1万円', note: '紙幣' },
+  { value:  5000, label: '5千円', note: '紙幣' },
+  { value:  1000, label: '1千円', note: '紙幣' },
+  { value:   500, label: '500円', note: '硬貨' },
+  { value:   100, label: '100円', note: '硬貨' },
+  { value:    50, label:  '50円', note: '硬貨' },
+  { value:    10, label:  '10円', note: '硬貨' },
+  { value:     5, label:   '5円', note: '硬貨' },
+  { value:     1, label:   '1円', note: '硬貨' },
+]
 
 const INPUT_CLS =
   'w-full px-4 py-3 border border-[#DDD5C5] text-sm bg-[#FDFAF5] text-[#2C1A0E] focus:outline-none focus:border-[#8B5E3C] focus:ring-1 focus:ring-[#8B5E3C]/20 placeholder:text-[#C4B8A8] transition-colors'
@@ -121,6 +133,30 @@ export default function CashOtherView({
   const [editingCash, setEditingCash] = useState(false)
   const [newAmount, setNewAmount] = useState(cash.registerAmount ?? 0)
   const [cashNote, setCashNote] = useState('')
+  const [counts, setCounts] = useState(() => cash.denominations ?? {})
+
+  // cashプロップが外部から更新されたとき（リアルタイム同期など）に反映
+  useEffect(() => {
+    setCounts(cash.denominations ?? {})
+  }, [cash.denominations])
+
+  const denomTotal = DENOMS.reduce((s, d) => s + d.value * (counts[d.value] ?? 0), 0)
+
+  const setCount = (value, n) => setCounts(prev => ({ ...prev, [value]: Math.max(0, n) }))
+
+  const applyDenomToRegister = () => {
+    const entry = {
+      id: genId(),
+      date: new Date().toISOString(),
+      amount: denomTotal,
+      notes: '硬貨・紙幣カウントより',
+    }
+    onUpdateCash({
+      registerAmount: denomTotal,
+      history: [entry, ...(cash.history || [])].slice(0, 50),
+      denominations: counts,
+    })
+  }
 
   const [showAddEquip, setShowAddEquip] = useState(false)
   const [newEquip, setNewEquip] = useState({ name: '', quantity: 1, notes: '' })
@@ -136,6 +172,7 @@ export default function CashOtherView({
     onUpdateCash({
       registerAmount: amount,
       history: [entry, ...(cash.history || [])].slice(0, 50),
+      denominations: counts,
     })
     setEditingCash(false)
     setCashNote('')
@@ -241,6 +278,69 @@ export default function CashOtherView({
             </div>
           </div>
         )}
+      </section>
+
+      {/* ========== 硬貨・紙幣カウンター ========== */}
+      <section>
+        <h2 className="font-serif text-base font-medium text-[#2C1A0E] mb-4 tracking-wide">硬貨・紙幣の枚数</h2>
+        <div className="bg-[#FDFAF5] border border-[#EDE7DA]" style={{ borderRadius: '3px' }}>
+          {DENOMS.map((d, i) => (
+            <div
+              key={d.value}
+              className={`flex items-center gap-3 px-4 py-2.5 ${i < DENOMS.length - 1 ? 'border-b border-[#EDE7DA]' : ''}`}
+            >
+              {/* 券種ラベル */}
+              <div className="w-14 flex-shrink-0">
+                <p className="text-sm font-serif font-medium text-[#2C1A0E] tabular-nums">{d.label}</p>
+                <p className="text-[9px] text-[#C4B8A8] tracking-wide">{d.note}</p>
+              </div>
+              {/* −/+ */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCount(d.value, (counts[d.value] ?? 0) - 1)}
+                  className="w-7 h-7 flex items-center justify-center text-[#7A6858] text-lg bg-[#EDE7DA] active:bg-[#DDD5C5]"
+                  style={{ borderRadius: '2px' }}
+                >−</button>
+                <input
+                  type="number"
+                  min="0"
+                  value={counts[d.value] ?? 0}
+                  onChange={e => setCount(d.value, Number(e.target.value) || 0)}
+                  className="w-12 text-center text-sm font-bold text-[#2C1A0E] tabular-nums border border-[#DDD5C5] bg-[#FDFAF5] py-1 focus:outline-none focus:border-[#8B5E3C]"
+                  style={{ borderRadius: '2px' }}
+                />
+                <button
+                  onClick={() => setCount(d.value, (counts[d.value] ?? 0) + 1)}
+                  className="w-7 h-7 flex items-center justify-center text-[#F4EFE6] text-lg bg-[#2C1A0E] active:bg-[#4a2e1a]"
+                  style={{ borderRadius: '2px' }}
+                >+</button>
+              </div>
+              {/* 小計 */}
+              <div className="flex-1 text-right">
+                <p className="text-[11px] text-[#A8998A] tabular-nums">
+                  ¥{(d.value * (counts[d.value] ?? 0)).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          ))}
+
+          {/* 合計 */}
+          <div className="px-4 py-4 border-t border-[#DDD5C5] bg-[#F4EFE6]">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[9px] text-[#A8998A] tracking-widest uppercase font-semibold">合計</p>
+              <p className="font-serif text-2xl font-light text-[#2C1A0E] tabular-nums">
+                ¥{denomTotal.toLocaleString()}
+              </p>
+            </div>
+            <button
+              onClick={applyDenomToRegister}
+              className="w-full py-2.5 bg-[#2C1A0E] text-[#F4EFE6] text-sm font-medium tracking-widest active:bg-[#4a2e1a] transition-colors"
+              style={{ borderRadius: '2px' }}
+            >
+              この金額をレジに設定
+            </button>
+          </div>
+        </div>
       </section>
 
       {/* ========== 備品管理 ========== */}

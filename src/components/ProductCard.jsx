@@ -273,9 +273,17 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
                 </div>
               </div>
 
-              {/* 並び替えモード: ↑↓ ボタン / 通常: 編集ボタン */}
+              {/* 並び替えモード: ドラッグハンドル + ↑↓ / 通常: 編集ボタン */}
               {isReordering ? (
-                <div className="flex-shrink-0 flex flex-col gap-0.5">
+                <div className="flex-shrink-0 flex flex-col gap-0.5 items-center">
+                  {/* ドラッグハンドル（長押しで掴む視覚的手がかり） */}
+                  <div className="w-8 h-5 flex items-center justify-center text-[#C4B8A8] cursor-grab select-none" aria-label="ドラッグで移動">
+                    <svg width="14" height="10" viewBox="0 0 14 10" fill="currentColor">
+                      <rect y="0" width="14" height="1.5" rx="1"/>
+                      <rect y="4" width="14" height="1.5" rx="1"/>
+                      <rect y="8" width="14" height="1.5" rx="1"/>
+                    </svg>
+                  </div>
                   <button
                     onClick={onMoveUp}
                     disabled={isFirst}
