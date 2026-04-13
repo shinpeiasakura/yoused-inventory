@@ -13,6 +13,7 @@ export default function InventoryView({
   onDeleteProduct,
   onAddColor,
   onReorder,
+  checkedIds,
 }) {
   const [activeColor,    setActiveColor]    = useState('all')
   const [showForm,       setShowForm]       = useState(false)
@@ -356,6 +357,31 @@ export default function InventoryView({
                   onMoveUp={() => handleMove(idx, idx - 1)}
                   onMoveDown={() => handleMove(idx, idx + 1)}
                 />
+                {/* 当日在庫変更済みバッジ */}
+                {checkedIds?.has(product.id) && (
+                  <div
+                    aria-label="本日変更済み"
+                    style={{
+                      position:       'absolute',
+                      top:            7,
+                      right:          7,
+                      width:          17,
+                      height:         17,
+                      borderRadius:   '50%',
+                      background:     '#5B8C5A',
+                      display:        'flex',
+                      alignItems:     'center',
+                      justifyContent: 'center',
+                      pointerEvents:  'none',
+                      zIndex:         10,
+                      boxShadow:      '0 1px 4px rgba(44,26,14,0.25)',
+                    }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                      <polyline points="1.5,4.5 3.5,7 7.5,2" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                )}
               </div>
             )
           })

@@ -20,6 +20,25 @@ import TodaySalesView from './components/TodaySalesView'
 
 function genId() { return crypto.randomUUID() }
 
+// ── 当日チェック（在庫変更済みバッジ）────────────────────────────────────────
+const CHECKED_KEY = 'yoused_checked_v1'
+const isoToday = () => new Date().toISOString().slice(0, 10)
+
+function loadCheckedIds() {
+  try {
+    const raw = localStorage.getItem(CHECKED_KEY)
+    if (!raw) return new Set()
+    const { date, ids } = JSON.parse(raw)
+    return date === isoToday() ? new Set(ids) : new Set()
+  } catch { return new Set() }
+}
+
+function saveCheckedIds(ids) {
+  try {
+    localStorage.setItem(CHECKED_KEY, JSON.stringify({ date: isoToday(), ids: [...ids] }))
+  } catch {}
+}
+
 function SyncBadge({ color, pulse, label, detail }) {
   return (
     <span
@@ -59,6 +78,7 @@ export default function App() {
   const [realtimeStatus,  setRealtimeStatus]  = useState('connecting')
   const [realtimeDetail,  setRealtimeDetail]  = useState('')
   const [lastSyncedAt,    setLastSyncedAt]    = useState(null)
+  const [checkedToday,    setCheckedToday]    = useState(() => loadCheckedIds())
 
   const dataRef  = useRef(data)
   dataRef.current = data
@@ -333,6 +353,13 @@ export default function App() {
     const isStockUpdate = 'storeStock' in updates || 'stock501' in updates
     if (isStockUpdate) {
       debouncedSync(id)
+      // 当日の在庫変更済みとしてマーク
+      setCheckedToday(prev => {
+        const next = new Set(prev)
+        next.add(id)
+        saveCheckedIds(next)
+        return next
+      })
     } else {
       // dataRef.current は最新ステートのスナップショット。
       // updates をマージして syncProduct に渡すことで、setData の非同期タイミングに依存しない。
@@ -464,6 +491,7 @@ export default function App() {
             onDeleteProduct={deleteProduct}
             onAddColor={addColor}
             onReorder={reorderProducts}
+            checkedIds={checkedToday}
           />
         )}
       </main>
