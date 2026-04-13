@@ -184,11 +184,13 @@ export default function ProductCard({ product, color, onEdit, onDelete, onUpdate
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         style={{
-          transform:   `translateX(${swipeX}px)`,
-          transition:  swipeAnim ? 'transform 0.22s ease' : 'none',
-          touchAction: 'pan-y',    // 縦スクロールはブラウザ任せ、横はJSで処理
-          position:    'relative',
-          zIndex:      1,
+          transform:       `translateX(${swipeX}px)`,
+          transition:      swipeAnim ? 'transform 0.22s ease' : 'none',
+          // 並び替えモード中は touch-action:none（親div でも設定済み、二重に保険をかける）
+          // 通常モード中は pan-y（縦スクロールはブラウザ任せ、横スワイプはJSで処理）
+          touchAction:     isReordering ? 'none' : 'pan-y',
+          position:        'relative',
+          zIndex:          1,
           backgroundColor: '#FDFAF5',
         }}
       >

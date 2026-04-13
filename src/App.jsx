@@ -2,19 +2,21 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import CategoryNav from './components/CategoryNav'
 import InventoryView from './components/InventoryView'
 import CashOtherView from './components/CashOtherView'
-import { CATEGORIES, DEFAULT_COLORS } from './constants'
+import { CATEGORIES, DEFAULT_COLORS, TODAY_SALES_TAB } from './constants'
 import {
   loadCache, saveCache, mergeTempPhotos,
   loadFromSupabase, migrateToSupabase,
   uploadPhoto, deletePhotoFromStorage,
   saveTempPhoto, deleteTempPhoto,
   syncProduct, deleteProductFromDb,
+  syncSortOrders,
   syncColor,
   syncCash,
   syncEquipmentItem, deleteEquipmentFromDb,
   parseProductRow,
 } from './lib/db'
 import { subscribeToRealtime } from './lib/realtime'
+import TodaySalesView from './components/TodaySalesView'
 
 function genId() { return crypto.randomUUID() }
 
@@ -332,13 +334,29 @@ export default function App() {
     if (isStockUpdate) {
       debouncedSync(id)
     } else {
-      setData(prev => {
-        const product = prev.products.find(p => p.id === id)
-        if (product) dbSync(syncProduct(product))
-        return prev
-      })
+      // dataRef.current は最新ステートのスナップショット。
+      // updates をマージして syncProduct に渡すことで、setData の非同期タイミングに依存しない。
+      const currentProduct = dataRef.current.products.find(p => p.id === id)
+      if (currentProduct) {
+        dbSync(syncProduct({ ...currentProduct, ...updates }), `updateProduct ${id}`)
+      }
     }
   }, [debouncedSync])
+
+  // 並び替え専用: sort_order を一括で更新（個別 syncProduct は使わない）
+  const reorderProducts = useCallback((changes) => {
+    // changes: [{ id, sortOrder }, ...]
+    // ローカルステートを一括更新
+    setData(prev => ({
+      ...prev,
+      products: prev.products.map(p => {
+        const c = changes.find(ch => ch.id === p.id)
+        return c ? { ...p, sortOrder: c.sortOrder } : p
+      }),
+    }))
+    // Supabase に一括 UPDATE（1回のAPI呼び出しで完結）
+    dbSync(syncSortOrders(changes), `reorderProducts (${changes.length}件)`)
+  }, [])
 
   const deleteProduct = useCallback((id) => {
     deleteTempPhoto(id)
@@ -431,6 +449,11 @@ export default function App() {
             onUpdateEquipment={updateEquipment}
             onDeleteEquipment={deleteEquipment}
           />
+        ) : activeTab === TODAY_SALES_TAB ? (
+          <TodaySalesView
+            products={data.products}
+            colors={data.colors}
+          />
         ) : (
           <InventoryView
             category={activeTab}
@@ -440,6 +463,7 @@ export default function App() {
             onUpdateProduct={updateProduct}
             onDeleteProduct={deleteProduct}
             onAddColor={addColor}
+            onReorder={reorderProducts}
           />
         )}
       </main>

@@ -12,6 +12,7 @@ export default function InventoryView({
   onUpdateProduct,
   onDeleteProduct,
   onAddColor,
+  onReorder,
 }) {
   const [activeColor,    setActiveColor]    = useState('all')
   const [showForm,       setShowForm]       = useState(false)
@@ -21,10 +22,19 @@ export default function InventoryView({
   const [draggingIdx,    setDraggingIdx]    = useState(null)
   const [dropIdx,        setDropIdx]        = useState(null)
 
-  const listRef   = useRef(null)
-  // dragInfo は再レンダリングを起こさず最新状態を保持するためrefで管理
-  const dragInfo  = useRef({ pressing: false, active: false, fromIdx: null, overIdx: null, timer: null })
-  const filteredRef = useRef([])
+  const listRef      = useRef(null)
+  const filteredRef  = useRef([])
+  const pointerYRef  = useRef(0)
+  const rafRef       = useRef(null)
+  // dragState: 再レンダリングを起こさず最新状態を保持
+  const dragState    = useRef({
+    active:  false,
+    fromIdx: null,
+    overIdx: null,
+    startX:  0,
+    startY:  0,
+    timer:   null,
+  })
 
   // ── ソート: sort_order 降順（数値大 = 新しい・上に表示） ──────────────────────
   const filtered = (
@@ -32,10 +42,8 @@ export default function InventoryView({
       ? products
       : products.filter(p => p.colorId === activeColor)
   ).slice().sort((a, b) => {
-    // sort_order 降順（新しく追加したものが上）
     const so = (b.sortOrder ?? 0) - (a.sortOrder ?? 0)
     if (so !== 0) return so
-    // 同値の場合は name → size で安定ソート
     const na = (a.name ?? '').localeCompare(b.name ?? '', 'ja', { numeric: true, sensitivity: 'base' })
     if (na !== 0) return na
     return (a.size ?? '').localeCompare(b.size ?? '', 'ja', { numeric: true, sensitivity: 'base' })
@@ -54,73 +62,131 @@ export default function InventoryView({
     const [moved] = reordered.splice(fromIdx, 1)
     reordered.splice(toIdx, 0, moved)
     const n = reordered.length
+    // 変更が必要な商品だけ収集して一括送信
+    const changes = []
     reordered.forEach((p, displayIdx) => {
-      // 先頭(displayIdx=0)が最大値になるよう降順で割り当て
       const newSortOrder = n - 1 - displayIdx
       if ((p.sortOrder ?? 0) !== newSortOrder) {
-        onUpdateProduct(p.id, { sortOrder: newSortOrder })
+        changes.push({ id: p.id, sortOrder: newSortOrder })
       }
     })
-  }, [onUpdateProduct])
+    if (changes.length) onReorder(changes)
+  }, [onReorder])
 
-  // ── ドラッグ&ドロップ: 非パッシブtouchmoveリスナー ───────────────────────────
-  useEffect(() => {
-    const el = listRef.current
-    if (!el || !reordering) return
+  // ── 自動スクロール（画面端に近づいたら自動スクロール）────────────────────────
+  const stopAutoScroll = useCallback(() => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+  }, [])
 
-    const onMove = (e) => {
-      if (!dragInfo.current.active) return
-      e.preventDefault()
-      const y = e.touches[0].clientY
-      const cards = el.querySelectorAll('[data-card-idx]')
-      let over = dragInfo.current.fromIdx
-      for (const card of cards) {
-        const r = card.getBoundingClientRect()
-        if (y < r.top + r.height / 2) { over = +card.dataset.cardIdx; break }
-        over = +card.dataset.cardIdx
+  const startAutoScroll = useCallback(() => {
+    stopAutoScroll()
+    const ZONE = 80
+    const loop = () => {
+      const y  = pointerYRef.current
+      const vh = window.innerHeight
+      if (y > 0 && y < ZONE) {
+        window.scrollBy(0, -Math.ceil((ZONE - y) / 5))
+      } else if (y > vh - ZONE && y < vh) {
+        window.scrollBy(0, Math.ceil((y - (vh - ZONE)) / 5))
       }
-      if (over !== dragInfo.current.overIdx) {
-        dragInfo.current.overIdx = over
-        setDropIdx(over)
-      }
+      rafRef.current = requestAnimationFrame(loop)
     }
-    el.addEventListener('touchmove', onMove, { passive: false })
-    return () => el.removeEventListener('touchmove', onMove)
-  }, [reordering])
+    rafRef.current = requestAnimationFrame(loop)
+  }, [stopAutoScroll])
 
-  const handleListTouchStart = (e) => {
-    const cardEl = e.target.closest('[data-card-idx]')
-    if (!cardEl) return
-    const idx = +cardEl.dataset.cardIdx
-    dragInfo.current.pressing = true
-    dragInfo.current.fromIdx  = idx
-    dragInfo.current.overIdx  = idx
-    dragInfo.current.timer = setTimeout(() => {
-      if (!dragInfo.current.pressing) return
-      navigator.vibrate?.(30)
-      dragInfo.current.active = true
-      setDraggingIdx(idx)
-      setDropIdx(idx)
-    }, 400)
-  }
-
-  const handleListTouchEnd = useCallback(() => {
-    clearTimeout(dragInfo.current.timer)
-    const { active, fromIdx, overIdx } = dragInfo.current
-    dragInfo.current = { pressing: false, active: false, fromIdx: null, overIdx: null, timer: null }
+  // ── ドラッグ終了（ドロップ確定）────────────────────────────────────────────
+  const endDrag = useCallback(() => {
+    clearTimeout(dragState.current.timer)
+    const { active, fromIdx, overIdx } = dragState.current
+    dragState.current = { active: false, fromIdx: null, overIdx: null, startX: 0, startY: 0, timer: null }
+    stopAutoScroll()
     setDraggingIdx(null)
     setDropIdx(null)
     if (active && fromIdx !== null && overIdx !== null && fromIdx !== overIdx) {
+      navigator.vibrate?.([10, 20, 10])
       handleMove(fromIdx, overIdx)
     }
-  }, [handleMove])
+  }, [handleMove, stopAutoScroll])
 
-  const handleListTouchCancel = () => {
-    clearTimeout(dragInfo.current.timer)
-    dragInfo.current = { pressing: false, active: false, fromIdx: null, overIdx: null, timer: null }
-    setDraggingIdx(null)
-    setDropIdx(null)
-  }
+  // ── ドキュメントレベルのポインターイベント & コンテキストメニュー抑制 ──────────
+  useEffect(() => {
+    if (!reordering) return
+
+    const onPointerMove = (e) => {
+      pointerYRef.current = e.clientY
+      const ds = dragState.current
+
+      if (!ds.active) {
+        // 長押し中に指が動きすぎたらキャンセル（通常スクロールを許可）
+        if (ds.fromIdx !== null) {
+          const dx = Math.abs(e.clientX - ds.startX)
+          const dy = Math.abs(e.clientY - ds.startY)
+          if (dx > 6 || dy > 8) {
+            clearTimeout(ds.timer)
+            ds.fromIdx = null
+          }
+        }
+        return
+      }
+
+      // ドラッグアクティブ中: ブラウザのスクロール・選択を抑制
+      e.preventDefault()
+
+      // ドロップ先インデックスを更新
+      const cards = listRef.current?.querySelectorAll('[data-card-idx]')
+      if (!cards) return
+      let over = ds.fromIdx
+      for (const card of cards) {
+        const r = card.getBoundingClientRect()
+        if (e.clientY < r.top + r.height / 2) { over = +card.dataset.cardIdx; break }
+        over = +card.dataset.cardIdx
+      }
+      if (over !== ds.overIdx) {
+        ds.overIdx = over
+        setDropIdx(over)
+      }
+    }
+
+    const preventCtx = (e) => e.preventDefault()
+
+    document.addEventListener('pointermove',   onPointerMove, { passive: false })
+    document.addEventListener('pointerup',     endDrag)
+    document.addEventListener('pointercancel', endDrag)
+    document.addEventListener('contextmenu',   preventCtx)
+
+    return () => {
+      document.removeEventListener('pointermove',   onPointerMove)
+      document.removeEventListener('pointerup',     endDrag)
+      document.removeEventListener('pointercancel', endDrag)
+      document.removeEventListener('contextmenu',   preventCtx)
+      stopAutoScroll()
+    }
+  }, [reordering, endDrag, stopAutoScroll])
+
+  // ── カードの長押し開始（pointerdown） ────────────────────────────────────────
+  const handleCardPointerDown = useCallback((e, idx) => {
+    // マウスは左ボタンのみ対応
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    // ↑↓ボタン・編集ボタンなどのタップはドラッグを開始しない
+    if (e.target.closest('button')) return
+
+    const ds = dragState.current
+    clearTimeout(ds.timer)
+    ds.fromIdx = idx
+    ds.overIdx = idx
+    ds.startX  = e.clientX
+    ds.startY  = e.clientY
+    ds.active  = false
+
+    ds.timer = setTimeout(() => {
+      if (ds.fromIdx !== idx) return  // キャンセル済み
+      navigator.vibrate?.(30)
+      ds.active = true
+      setDraggingIdx(idx)
+      setDropIdx(idx)
+      startAutoScroll()
+    }, 180)
+  }, [startAutoScroll])
 
   // ── フォーム操作 ─────────────────────────────────────────────────────────────
   const openAdd = () => {
@@ -160,8 +226,6 @@ export default function InventoryView({
       })
     } else {
       const { sizes, ...shared } = data
-      // 現在の最大 sort_order を取得し、新商品は最大値+n から +1 ずつ割り当て
-      // DESC ソートなので最大値が上に来る → 新商品が一番上に表示される
       const maxSO = products.reduce((m, p) => Math.max(m, p.sortOrder ?? 0), 0)
       const base  = maxSO + sizes.length
       sizes.forEach((sizeData, idx) => {
@@ -234,9 +298,11 @@ export default function InventoryView({
       <div
         ref={listRef}
         className="p-3 space-y-2"
-        onTouchStart={reordering ? handleListTouchStart : undefined}
-        onTouchEnd={reordering ? handleListTouchEnd : undefined}
-        onTouchCancel={reordering ? handleListTouchCancel : undefined}
+        style={reordering ? {
+          userSelect:         'none',
+          WebkitUserSelect:   'none',
+          WebkitTouchCallout: 'none',
+        } : undefined}
       >
         {filtered.length === 0 ? (
           <div className="text-center py-20">
@@ -247,37 +313,52 @@ export default function InventoryView({
             <p className="text-[11px] text-[#C4B8A8] tracking-wide">右下の ＋ から追加してください</p>
           </div>
         ) : (
-          filtered.map((product, idx) => (
-            <div
-              key={product.id}
-              data-card-idx={idx}
-              style={{
-                opacity:    draggingIdx === idx ? 0.35 : 1,
-                transition: 'opacity 0.15s',
-                // ドロップ先の上に仕切り線を表示（ドラッグ元の前後は除外）
-                borderTop: (
-                  reordering &&
-                  dropIdx === idx &&
-                  draggingIdx !== idx &&
-                  draggingIdx !== idx - 1
-                ) ? '2px solid #8B5E3C' : '2px solid transparent',
-              }}
-            >
-              <ProductCard
-                product={product}
-                color={colors.find(c => c.id === product.colorId)}
-                onEdit={() => openEdit(product)}
-                onDelete={() => handleDelete(product.id)}
-                onUpdateStock={(field, value) => onUpdateProduct(product.id, { [field]: value })}
-                onUpdatePhoto={(photo) => onUpdateProduct(product.id, { photo })}
-                isReordering={reordering}
-                isFirst={idx === 0}
-                isLast={idx === filtered.length - 1}
-                onMoveUp={() => handleMove(idx, idx - 1)}
-                onMoveDown={() => handleMove(idx, idx + 1)}
-              />
-            </div>
-          ))
+          filtered.map((product, idx) => {
+            const isLifted     = draggingIdx === idx
+            const isDropTarget = reordering && dropIdx === idx && draggingIdx !== idx && draggingIdx !== idx - 1
+            return (
+              <div
+                key={product.id}
+                data-card-idx={idx}
+                onPointerDown={reordering ? (e) => handleCardPointerDown(e, idx) : undefined}
+                style={{
+                  position:   'relative',
+                  zIndex:     isLifted ? 20 : 1,
+                  transform:  isLifted ? 'scale(1.03)' : 'scale(1)',
+                  opacity:    isLifted ? 0.80 : 1,
+                  boxShadow:  isLifted
+                    ? '0 16px 40px rgba(44,26,14,0.32), 0 4px 12px rgba(44,26,14,0.20)'
+                    : undefined,
+                  // ドラッグ中はアニメーション不要、ドロップ直後はスムーズに収まる
+                  transition: isLifted
+                    ? 'none'
+                    : 'transform 0.22s cubic-bezier(0.2,0,0,1), box-shadow 0.22s ease, opacity 0.18s ease',
+                  // ドロップ先プレビュー: 上に太いラインと余白
+                  borderTop:  isDropTarget ? '3px solid #8B5E3C' : '3px solid transparent',
+                  paddingTop: isDropTarget ? '6px' : undefined,
+                  // 並び替えモード中はタッチのデフォルト動作（スクロール・選択）を抑制
+                  touchAction:        reordering ? 'none' : undefined,
+                  WebkitUserSelect:   reordering ? 'none' : undefined,
+                  WebkitTouchCallout: reordering ? 'none' : undefined,
+                  cursor:             reordering ? (isLifted ? 'grabbing' : 'grab') : undefined,
+                }}
+              >
+                <ProductCard
+                  product={product}
+                  color={colors.find(c => c.id === product.colorId)}
+                  onEdit={() => openEdit(product)}
+                  onDelete={() => handleDelete(product.id)}
+                  onUpdateStock={(field, value) => onUpdateProduct(product.id, { [field]: value })}
+                  onUpdatePhoto={(photo) => onUpdateProduct(product.id, { photo })}
+                  isReordering={reordering}
+                  isFirst={idx === 0}
+                  isLast={idx === filtered.length - 1}
+                  onMoveUp={() => handleMove(idx, idx - 1)}
+                  onMoveDown={() => handleMove(idx, idx + 1)}
+                />
+              </div>
+            )
+          })
         )}
       </div>
 

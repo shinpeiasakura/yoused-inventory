@@ -214,8 +214,12 @@ export async function loadFromSupabase() {
 }
 
 export async function migrateToSupabase(data) {
+  const n = data.products.length
   await Promise.all([
-    ...data.products.map(p => syncProduct(p)),
+    // sort_order 未設定の旧商品に連番を割り当てる（配列順を維持）
+    ...data.products.map((p, idx) =>
+      syncProduct({ ...p, sortOrder: p.sortOrder ?? (n - 1 - idx) })
+    ),
     ...data.colors
       .filter(c => !DEFAULT_COLORS.find(d => d.id === c.id))
       .map(c => syncColor(c)),
@@ -240,6 +244,26 @@ export async function syncProduct(product) {
 export async function deleteProductFromDb(id) {
   const { error } = await supabase.from('products').delete().eq('id', id)
   if (error) throw new Error(`deleteProduct: ${error.message}`)
+}
+
+/**
+ * 並び替え専用: 複数商品の sort_order を一括 UPDATE する
+ * 他フィールドを上書きしないよう UPDATE（upsert ではなく）を使う
+ */
+export async function syncSortOrders(changes) {
+  // changes: [{ id: string, sortOrder: number }, ...]
+  if (!changes.length) return
+  const now = new Date().toISOString()
+  const results = await Promise.all(
+    changes.map(({ id, sortOrder }) =>
+      supabase
+        .from('products')
+        .update({ sort_order: sortOrder, updated_at: now })
+        .eq('id', id)
+    )
+  )
+  const errors = results.filter(r => r.error).map(r => r.error.message)
+  if (errors.length) throw new Error(`syncSortOrders: ${errors.join('; ')}`)
 }
 
 export async function syncColor(color) {
@@ -293,9 +317,10 @@ function productToRow(p) {
     updated_at:   new Date().toISOString(),
   }
   // カラムが未作成でも他フィールドの保存が失敗しないよう、値がある場合のみ送る
-  if (p.photoUrl)          row.photo_url  = p.photoUrl
-  if (p.alert != null)     row.alert      = p.alert
-  if (p.sortOrder != null) row.sort_order = p.sortOrder
+  if (p.photoUrl)      row.photo_url  = p.photoUrl
+  if (p.alert != null) row.alert      = p.alert
+  // sort_order は常に送る（null/undefined は 0 にフォールバック）
+  row.sort_order = p.sortOrder ?? 0
   return row
 }
 

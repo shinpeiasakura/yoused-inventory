@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react'
-import { ALL_TABS } from '../constants'
+import { ALL_TABS, TODAY_SALES_TAB } from '../constants'
 
 export default function CategoryNav({ active, onChange }) {
   const scrollRef = useRef(null)
@@ -21,8 +21,14 @@ export default function CategoryNav({ active, onChange }) {
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {ALL_TABS.map(tab => {
-          const isActive = active === tab
-          const isCash = tab === 'Cash&Others'
+          const isActive   = active === tab
+          const isCash     = tab === 'Cash&Others'
+          const isToday    = tab === TODAY_SALES_TAB
+
+          let activeColor = 'text-[#2C1A0E] border-[#2C1A0E]'
+          if (isCash)  activeColor = 'text-[#8B5E3C] border-[#8B5E3C]'
+          if (isToday) activeColor = 'text-[#2D5A2D] border-[#2D5A2D]'
+
           return (
             <button
               key={tab}
@@ -31,12 +37,7 @@ export default function CategoryNav({ active, onChange }) {
               className={`
                 flex-shrink-0 px-4 py-3 text-[12px] tracking-widest whitespace-nowrap
                 border-b-2 transition-all duration-150 font-medium uppercase
-                ${isActive
-                  ? isCash
-                    ? 'text-[#8B5E3C] border-[#8B5E3C]'
-                    : 'text-[#2C1A0E] border-[#2C1A0E]'
-                  : 'text-[#A8998A] border-transparent'
-                }
+                ${isActive ? activeColor : 'text-[#A8998A] border-transparent'}
               `}
             >
               {tab}

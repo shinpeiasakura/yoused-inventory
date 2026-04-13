@@ -12,7 +12,8 @@ export const CATEGORIES = [
   'Others',
 ]
 
-export const ALL_TABS = [...CATEGORIES, 'Cash&Others']
+export const TODAY_SALES_TAB = '本日の販売'
+export const ALL_TABS = [...CATEGORIES, TODAY_SALES_TAB, 'Cash&Others']
 
 export const DEFAULT_COLORS = [
   { id: 'black',    name: 'Black',    hex: '#1A1A1A' },
