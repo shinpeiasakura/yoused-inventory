@@ -348,26 +348,12 @@ export default function App() {
     // ±ボタンからの在庫変更か判定（storeStock/stock501 のみ → true、フォーム保存は他フィールドも含む → false）
     const isStockOnlyUpdate = Object.keys(updates).every(k => k === 'storeStock' || k === 'stock501')
 
-    // 在庫減少（販売）を検出 → saleDate を今日に自動設定
-    let effectiveUpdates = updates
-    if (isStockOnlyUpdate) {
-      const cur = dataRef.current.products.find(p => p.id === id)
-      if (cur) {
-        const decreased =
-          ('storeStock' in updates && updates.storeStock < (cur.storeStock ?? 0)) ||
-          ('stock501'   in updates && updates.stock501   < (cur.stock501   ?? 0))
-        if (decreased) {
-          effectiveUpdates = { ...updates, saleDate: isoToday() }
-        }
-      }
-    }
-
     setData(prev => ({
       ...prev,
-      products: prev.products.map(p => (p.id === id ? { ...p, ...effectiveUpdates } : p)),
+      products: prev.products.map(p => (p.id === id ? { ...p, ...updates } : p)),
     }))
 
-    const isStockUpdate = 'storeStock' in effectiveUpdates || 'stock501' in effectiveUpdates
+    const isStockUpdate = 'storeStock' in updates || 'stock501' in updates
     if (isStockUpdate) {
       debouncedSync(id)
       // ±ボタン操作のみチェックバッジを付ける（フォーム保存では付けない）
@@ -384,7 +370,7 @@ export default function App() {
       // updates をマージして syncProduct に渡すことで、setData の非同期タイミングに依存しない。
       const currentProduct = dataRef.current.products.find(p => p.id === id)
       if (currentProduct) {
-        dbSync(syncProduct({ ...currentProduct, ...effectiveUpdates }), `updateProduct ${id}`)
+        dbSync(syncProduct({ ...currentProduct, ...updates }), `updateProduct ${id}`)
       }
     }
   }, [debouncedSync])
