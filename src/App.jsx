@@ -345,27 +345,46 @@ export default function App() {
       return
     }
 
+    // ±ボタンからの在庫変更か判定（storeStock/stock501 のみ → true、フォーム保存は他フィールドも含む → false）
+    const isStockOnlyUpdate = Object.keys(updates).every(k => k === 'storeStock' || k === 'stock501')
+
+    // 在庫減少（販売）を検出 → saleDate を今日に自動設定
+    let effectiveUpdates = updates
+    if (isStockOnlyUpdate) {
+      const cur = dataRef.current.products.find(p => p.id === id)
+      if (cur) {
+        const decreased =
+          ('storeStock' in updates && updates.storeStock < (cur.storeStock ?? 0)) ||
+          ('stock501'   in updates && updates.stock501   < (cur.stock501   ?? 0))
+        if (decreased) {
+          effectiveUpdates = { ...updates, saleDate: isoToday() }
+        }
+      }
+    }
+
     setData(prev => ({
       ...prev,
-      products: prev.products.map(p => (p.id === id ? { ...p, ...updates } : p)),
+      products: prev.products.map(p => (p.id === id ? { ...p, ...effectiveUpdates } : p)),
     }))
 
-    const isStockUpdate = 'storeStock' in updates || 'stock501' in updates
+    const isStockUpdate = 'storeStock' in effectiveUpdates || 'stock501' in effectiveUpdates
     if (isStockUpdate) {
       debouncedSync(id)
-      // 当日の在庫変更済みとしてマーク
-      setCheckedToday(prev => {
-        const next = new Set(prev)
-        next.add(id)
-        saveCheckedIds(next)
-        return next
-      })
+      // ±ボタン操作のみチェックバッジを付ける（フォーム保存では付けない）
+      if (isStockOnlyUpdate) {
+        setCheckedToday(prev => {
+          const next = new Set(prev)
+          next.add(id)
+          saveCheckedIds(next)
+          return next
+        })
+      }
     } else {
       // dataRef.current は最新ステートのスナップショット。
       // updates をマージして syncProduct に渡すことで、setData の非同期タイミングに依存しない。
       const currentProduct = dataRef.current.products.find(p => p.id === id)
       if (currentProduct) {
-        dbSync(syncProduct({ ...currentProduct, ...updates }), `updateProduct ${id}`)
+        dbSync(syncProduct({ ...currentProduct, ...effectiveUpdates }), `updateProduct ${id}`)
       }
     }
   }, [debouncedSync])
