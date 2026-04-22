@@ -83,14 +83,49 @@ export default function App() {
   const dataRef  = useRef(data)
   dataRef.current = data
 
+  // 楽観的UI用: 未送信の在庫変更を追跡し、ポーリング・Realtimeによる上書きを防ぐ
+  const pendingStockIds  = useRef(new Set())
+  // エラー時のロールバック用スナップショット { [productId]: { storeStock, stock501 } }
+  const stockRollbackRef = useRef({})
+
+  // トースト通知
+  const [toastMsg,  setToastMsg]  = useState(null)
+  const toastTimer = useRef(null)
+  const showToast = useCallback((msg) => {
+    clearTimeout(toastTimer.current)
+    setToastMsg(msg)
+    toastTimer.current = setTimeout(() => setToastMsg(null), 4500)
+  }, [])
+
   const debounceTimers = useRef({})
   const debouncedSync = useCallback((id) => {
     clearTimeout(debounceTimers.current[id])
-    debounceTimers.current[id] = setTimeout(() => {
+    debounceTimers.current[id] = setTimeout(async () => {
       const product = dataRef.current.products.find(p => p.id === id)
-      if (product) dbSync(syncProduct(product))
+      if (!product) return
+      try {
+        await syncProduct(product)
+        pendingStockIds.current.delete(id)
+        delete stockRollbackRef.current[id]
+        console.log('[YOUSED] synced:', id)
+      } catch (e) {
+        console.error('[YOUSED] sync FAILED:', e.message)
+        const rollback = stockRollbackRef.current[id]
+        pendingStockIds.current.delete(id)
+        delete stockRollbackRef.current[id]
+        // エラー時: 画面の在庫数を元の値に戻す
+        if (rollback) {
+          setData(prev => ({
+            ...prev,
+            products: prev.products.map(p =>
+              p.id === id ? { ...p, ...rollback } : p
+            ),
+          }))
+        }
+        showToast('在庫の保存に失敗しました。元の数に戻しました。')
+      }
     }, 800)
-  }, [])
+  }, [showToast])
 
   useEffect(() => { saveCache(data) }, [data])
 
@@ -117,7 +152,12 @@ export default function App() {
           ...remote,
           products: remote.products.map(rp => {
             const local = prev.products.find(lp => lp.id === rp.id)
-            return local?.photo ? { ...rp, photo: local.photo } : rp
+            if (!local) return rp
+            // pending中の在庫変更をポーリング結果で上書きしない
+            if (pendingStockIds.current.has(rp.id)) {
+              return { ...rp, storeStock: local.storeStock, stock501: local.stock501, photo: local.photo || null }
+            }
+            return local.photo ? { ...rp, photo: local.photo } : rp
           }),
         })
         return merged
@@ -157,9 +197,14 @@ export default function App() {
           if (eventType === 'UPDATE') {
             return {
               ...prev,
-              products: prev.products.map(p =>
-                p.id === incoming.id ? { ...incoming, photo: p.photo } : p
-              ),
+              products: prev.products.map(p => {
+                if (p.id !== incoming.id) return p
+                // pending中の在庫変更はRealtimeで上書きしない
+                if (pendingStockIds.current.has(incoming.id)) {
+                  return { ...incoming, storeStock: p.storeStock, stock501: p.stock501, photo: p.photo }
+                }
+                return { ...incoming, photo: p.photo }
+              }),
             }
           }
 
@@ -347,14 +392,36 @@ export default function App() {
 
     // ±ボタンからの在庫変更か判定（storeStock/stock501 のみ → true、フォーム保存は他フィールドも含む → false）
     const isStockOnlyUpdate = Object.keys(updates).every(k => k === 'storeStock' || k === 'stock501')
+    const isStockUpdate = 'storeStock' in updates || 'stock501' in updates
 
+    // 在庫減少（販売）を検出 → saleDate を今日に自動設定
+    let effectiveUpdates = updates
+    if (isStockOnlyUpdate) {
+      const cur = dataRef.current.products.find(p => p.id === id)
+      if (cur) {
+        const decreased =
+          ('storeStock' in updates && updates.storeStock < (cur.storeStock ?? 0)) ||
+          ('stock501'   in updates && updates.stock501   < (cur.stock501   ?? 0))
+        if (decreased) {
+          effectiveUpdates = { ...updates, saleDate: isoToday() }
+        }
+      }
+    }
+
+    // 楽観的UI: 初回タップ時のみロールバック用スナップショットを保存（saleDate も含む）
+    if (isStockOnlyUpdate && !pendingStockIds.current.has(id)) {
+      const snap = dataRef.current.products.find(p => p.id === id)
+      if (snap) stockRollbackRef.current[id] = { storeStock: snap.storeStock, stock501: snap.stock501, saleDate: snap.saleDate }
+    }
+
+    // 即座に画面を更新（Supabase通信の完了を待たない）
     setData(prev => ({
       ...prev,
-      products: prev.products.map(p => (p.id === id ? { ...p, ...updates } : p)),
+      products: prev.products.map(p => (p.id === id ? { ...p, ...effectiveUpdates } : p)),
     }))
 
-    const isStockUpdate = 'storeStock' in updates || 'stock501' in updates
     if (isStockUpdate) {
+      pendingStockIds.current.add(id)
       debouncedSync(id)
       // ±ボタン操作のみチェックバッジを付ける（フォーム保存では付けない）
       if (isStockOnlyUpdate) {
@@ -370,7 +437,7 @@ export default function App() {
       // updates をマージして syncProduct に渡すことで、setData の非同期タイミングに依存しない。
       const currentProduct = dataRef.current.products.find(p => p.id === id)
       if (currentProduct) {
-        dbSync(syncProduct({ ...currentProduct, ...updates }), `updateProduct ${id}`)
+        dbSync(syncProduct({ ...currentProduct, ...effectiveUpdates }), `updateProduct ${id}`)
       }
     }
   }, [debouncedSync])
@@ -438,6 +505,15 @@ export default function App() {
 
   return (
     <div className="min-h-dvh bg-[#F4EFE6]">
+      {/* エラートースト */}
+      {toastMsg && (
+        <div
+          className="fixed top-4 left-1/2 z-50 px-4 py-3 text-sm font-medium text-white bg-[#C0392B] shadow-lg"
+          style={{ transform: 'translateX(-50%)', borderRadius: '4px', maxWidth: 'calc(100vw - 32px)', textAlign: 'center', whiteSpace: 'nowrap' }}
+        >
+          {toastMsg}
+        </div>
+      )}
       <div className="sticky top-0 z-40">
         {/* ── Header ── */}
         <header className="bg-[#2C1A0E] safe-top">
